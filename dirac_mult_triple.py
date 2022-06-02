@@ -118,7 +118,7 @@ if __name__=='__main__':
 
     x0 = np.array([0, 0, 0, 0, 0, 0])
 
-    h_levels = np.arange(0.05, 0.95, 0.05)
+    h_levels = np.arange(0.03, 0.33, 0.03)
     I_theta = [mu.integrate(gaussian_cost.cost)]
     print("Directions of the minimization           loss")
     for h in h_levels:
