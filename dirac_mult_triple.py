@@ -57,7 +57,7 @@ class PolyPenalty(Penalty):
         self.penal_type = "Polynomial penalty"
         self.p = p
 
-    def evaluate(self,x):
+    def evaluate(self, x):
         if x < 0:
             raise Exception(f"Penalty function is defined only for positive numbers. Passed {x: .4f} instead.")
         return np.power(x, self.p)
@@ -84,7 +84,7 @@ def check_dir(directory):
 if __name__=='__main__':
 
     # ---- Plots subfolder --------
-    plot_fold = 'triple_epicenter'
+    plot_fold = 'prova'
     # -----------------------------
     plot_fold = f"plots/{plot_fold}"
     check_dir(plot_fold)
@@ -118,7 +118,7 @@ if __name__=='__main__':
 
     x0 = np.array([0, 0, 0, 0, 0, 0])
 
-    h_levels = np.arange(0.03, 0.33, 0.03)
+    h_levels = np.arange(0.015, 0.315, 0.015)
     I_theta = [mu.integrate(gaussian_cost.cost)]
     print("Directions of the minimization           loss")
     for h in h_levels:

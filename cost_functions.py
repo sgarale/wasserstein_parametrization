@@ -1,5 +1,6 @@
 import numpy as np
 import matplotlib.pyplot as plt
+import torch
 from mpl_toolkits.mplot3d import Axes3D
 
 
@@ -112,6 +113,41 @@ class GaussianKernelCost2D:
         mask = distance_2 < np.power(self.radius, 2)
         cost[mask] = self.level * np.exp(- 1. / (np.power(self.radius, 2) - distance_2[mask]))
         return cost
+
+
+class GaussianKernelCost2DTensor:
+    """
+    Differentiable cost function with compact support and gaussian kernel shape.
+    """
+
+    def __init__(self, x_0, y_0, level=1., radius=1.):
+        """
+        :param x_0: float
+        :param y_0: float
+        :param level: float
+        :param radius: float
+        """
+        self.x0 = torch.tensor(x_0)
+        self.y0 = torch.tensor(y_0)
+        self.level = torch.tensor(level)
+        self.radius = torch.tensor(radius)
+
+    def cost(self, x, y):
+        """
+        :param x: flaot or torch tensor
+        :param y: flaot or torch tensor
+        :return: numpy ndarray
+        """
+        if isinstance(x, float):
+            x = torch.tensor([x])
+            y = torch.tensor([y])
+
+        distance_2 = torch.pow(x - self.x0, 2) + torch.pow(y - self.y0, 2)
+        cost = torch.zeros(x.shape, dtype=torch.float64)
+        mask = distance_2 < torch.pow(self.radius, 2)
+        cost[mask] = self.level * torch.exp(- 1. / (torch.pow(self.radius, 2) - distance_2[mask]))
+        return cost
+
 
 
 if __name__=='__main__':
