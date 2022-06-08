@@ -35,7 +35,7 @@ class Dirac2dMult:
         self.atoms_y = np.array(atoms)[:, 1]
         if weights == None:
             weights = np.repeat([1./self.atoms_x.shape[0]], self.atoms_x.shape[0])
-        elif:
+        else:
             self.weights = np.array(weights)
         if np.sum(weights) != 1.:
             raise Exception("Not a probability measure, check the weights.")

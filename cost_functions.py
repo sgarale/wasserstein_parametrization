@@ -143,9 +143,9 @@ class GaussianKernelCost2DTensor:
             y = torch.tensor([y])
 
         distance_2 = torch.pow(x - self.x0, 2) + torch.pow(y - self.y0, 2)
-        cost = torch.zeros(x.shape, dtype=torch.float64)
+        cost = torch.zeros(x.shape)
         mask = distance_2 < torch.pow(self.radius, 2)
-        cost[mask] = self.level * torch.exp(- 1. / (torch.pow(self.radius, 2) - distance_2[mask]))
+        cost[mask] = self.level * torch.exp(- 1. / (torch.pow(self.radius, 2) - torch.masked_select(distance_2, mask)))
         return cost
 
 

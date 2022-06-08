@@ -1,6 +1,6 @@
 import os
+import matplotlib.pyplot as plt
 import numpy as np
-from scipy.stats import multivariate_normal
 import torch
 from torch import nn
 import cost_functions as cf
@@ -36,14 +36,12 @@ class ThetaSigmoidNetwork(nn.Module):
 
 class PenalisedLoss(nn.Module):
 
-    def __init__(self, func, penalty, mu, h, nr_samples):
+    def __init__(self, func, penalty, h):
         super(PenalisedLoss, self).__init__()
         self.func = func
         self.penalty = penalty
-        self.mu = mu
         # self.p = p
         self.h = h
-        self.nr_samples = nr_samples
 
     def forward(self, y, theta_y):
         integral = torch.mean(self.func(y[:, 0] + theta_y[:, 0], y[:, 1] + theta_y[:, 1]))
@@ -69,20 +67,21 @@ class ITheta(nn.Module):
     def __init__(self, func, penalty, mu, h, width, nr_sample):
         super(ITheta, self).__init__()
         self.theta = ThetaSigmoidNetwork(width)
-        self.penalised_loss = PenalisedLoss(func=func, penalty=penalty, mu=mu, h=h, nr_samples=nr_sample)
+        self.penalised_loss = PenalisedLoss(func=func, penalty=penalty,h=h)
+        self.mu = mu
         self.nr_sample = nr_sample
 
     def forward(self):
-        y = self.mu.sample([self.nr_samples])
+        y = self.mu.sample([self.nr_sample])
         theta_y = self.theta(y)
         i_theta = self.penalised_loss(y, theta_y)
         return i_theta
 
 
 
-def train(model, x, optimizer):
+def train(model, optimizer):
     model.zero_grad()
-    output = model(x)
+    output = model()
     output.backward()
     optimizer.step()
     return output
@@ -90,8 +89,7 @@ def train(model, x, optimizer):
 
 if __name__ == '__main__':
 
-    # np.random.seed(0)
-    torch.manual_seed(0)
+    torch.manual_seed(29)
 
     device = "cuda" if torch.cuda.is_available() else "cpu"
     print(f"Using {device} device")
@@ -118,18 +116,50 @@ if __name__ == '__main__':
     print(directions)
 
     #################### ITheta tests #####################
+    torch.set_default_dtype(torch.float64)
     city_center = [0., 0.]
     cost_level = 1.
     radius = 1.5
-    net_width = 10
-    mc_samples = 1000
+    epicenter = torch.tensor([1., 0.])
+    uncertainty_level = 0.1
+    net_width = 20
+    mc_samples = 10000
+    learning_rate = 0.001
+    epochs = 1000
 
     penalty = pnl.PolyPenaltyTensor(3)
     loss = cf.GaussianKernelCost2DTensor(x_0=city_center[0], y_0=city_center[1],
                                          level=cost_level, radius=radius)
-    mu = torch.distributions.multivariate_normal.MultivariateNormal(torch.zeros(2), torch.eye(2))
+    mu = torch.distributions.multivariate_normal.MultivariateNormal(epicenter, torch.eye(2))
 
-    i_theta = ITheta(func=loss, penalty=penalty, mu=mu, h=0.1, width=10, nr_sample=mc_samples)
+    i_theta = ITheta(func=loss.cost, penalty=penalty.evaluate, mu=mu,
+                     h=uncertainty_level, width=net_width, nr_sample=mc_samples)
 
-    EPOCHS = 200
-    optm = torch.optim.Adam(i_theta.parameters(), lr=0.001)
+    # computing the expected loss via montecarlo
+    rnd_y = mu.sample([1000000])
+    expected_loss = torch.mean(loss.cost(rnd_y[:, 0], rnd_y[:, 1]))
+    print("-------------------------------------")
+    print(f"Expected Loss: {expected_loss:.4f}")
+    optm = torch.optim.Adam(i_theta.parameters(), lr=learning_rate)
+    out_vector = []
+    for i in range(epochs):
+        out = train(i_theta, optm)
+        out_vector.append(-float(out))
+    print(f"Parametrized worst case loss: {-out:.4f}")
+    plt.plot(np.arange(1, epochs + 1), out_vector)
+    plt.title(f"Training of the worst case loss for h={uncertainty_level}")
+    plt.xlabel("Epochs")
+    plt.ylabel("Worst case loss")
+    plt.show()
+
+    # Drawing the vector field theta
+    x = np.arange(-1.7, 1.8, 0.1)
+    y = np.arange(-1.7, 1.8, 0.1)
+    xv, yv = np.meshgrid(x, y)
+    theta = i_theta.theta(torch.stack([torch.from_numpy(xv), torch.from_numpy(yv)], dim=2)).detach().numpy()
+
+    # Depict illustration
+    plt.figure(figsize=(10, 10))
+    plt.streamplot(xv, yv, theta[:, :, 0], theta[:, :, 1], density=1.4, linewidth=None, color='#A23BEC')
+    plt.title('Direction of the optimization')
+    plt.show()
