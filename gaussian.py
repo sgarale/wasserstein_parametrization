@@ -7,23 +7,34 @@ import cost_functions as cf
 import penalties as pnl
 
 
-class Gaussian2D:
-    """
-    Generator of random points for a two dimensional Gaussian measure.
-    """
-    def __init__(self, mean, covariance_matrix):
-        self.multinormal = torch.distributions.multivariate_normal.MultivariateNormal(torch.tensor(mean),
-                                                                                      torch.tensor(covariance_matrix))
-        self.mean = np.array(mean)
-        self.covariance_matrix = np.array(covariance_matrix)
+# class Gaussian2D:
+#     """
+#     Generator of random points for a two dimensional Gaussian measure.
+#     """
+#     def __init__(self, mean, covariance_matrix):
+#         self.multinormal = torch.distributions.multivariate_normal.MultivariateNormal(torch.tensor(mean),
+#                                                                                       torch.tensor(covariance_matrix))
+#         self.mean = np.array(mean)
+#         self.covariance_matrix = np.array(covariance_matrix)
+#
+#     def sample(self, size):
+#         return self.multinormal.sample(size)
+#
+#     def density(self, x):
+#         x_m = x - self.mean
+#         return (1.0 / (np.sqrt((2 * np.pi) ** 2 * np.linalg.det(self.covariance_matrix))) * np.exp(
+#             -(np.linalg.solve(self.covariance_matrix, x_m).T.dot(x_m)) / 2))
 
-    def sample(self, size):
-        return self.multinormal.sample(size)
 
-    def density(self, x):
-        x_m = x - self.mean
-        return (1.0 / (np.sqrt((2 * np.pi) ** 2 * np.linalg.det(self.covariance_matrix))) * np.exp(
-            -(np.linalg.solve(self.covariance_matrix, x_m).T.dot(x_m)) / 2))
+# def init_weights(m):
+#     """
+#     Initialize the weights and the biases of a Linear layer to 0.
+#     :param m: nn.Module
+#     :return:
+#     """
+#     if isinstance(m, nn.Linear):
+#         torch.nn.init.xavier_uniform_(m.weight)
+#         torch.nn.init.zeros_(m.bias)
 
 
 class ThetaReLUNetwork(nn.Module):
@@ -38,6 +49,7 @@ class ThetaReLUNetwork(nn.Module):
             self.linear_relu_stack.append(nn.Linear(width, width))
         self.linear_relu_stack.append(nn.ReLU())
         self.linear_relu_stack.append(nn.Linear(width, 2))
+        # self.linear_relu_stack.apply(init_weights)
 
     def forward(self, x):
         theta = self.linear_relu_stack(x)
@@ -83,13 +95,14 @@ class ITheta(nn.Module):
     def __init__(self, func, penalty, mu, h, width, depth, nr_sample):
         super(ITheta, self).__init__()
         self.theta = ThetaReLUNetwork(width, depth)
+        self.mult_coeff = nn.Parameter(torch.tensor(1.))
         self.penalised_loss = PenalisedLoss(func=func, penalty=penalty,h=h)
         self.mu = mu
         self.nr_sample = nr_sample
 
     def forward(self):
         y = self.mu.sample([self.nr_sample])
-        theta_y = self.theta(y)
+        theta_y = self.mult_coeff * self.theta(y)
         i_theta = self.penalised_loss(y, theta_y)
         return i_theta
 
@@ -110,45 +123,23 @@ if __name__ == '__main__':
     device = "cuda" if torch.cuda.is_available() else "cpu"
     print(f"Using {device} device")
 
-    theta = ThetaSigmoidNetwork(5).to(device)
-    print(theta)
-
-    # let's see the parameters of the model
-    print("-----------------------------------------------")
-    for name, param in theta.named_parameters():
-        print(f"Layer: {name} | Size: {param.size()} | Values : {param} \n")
-
-    print("-----------------------------------------------")
-    x = torch.tensor([1., 2.])
-    # x = torch.rand(10, 2, device=device)
-    print(f"random initial points: {x}")
-    directions = theta(x)
-    print(directions)
-
-    x = torch.tensor([[1., 2.], [3., 4.], [5, 6]])
-    # x = torch.rand(10, 2, device=device)
-    print(f"evaluation points: {x}")
-    directions = theta(x)
-    print(directions)
-
     #################### ITheta tests #####################
     torch.set_default_dtype(torch.float64)
     city_center = [0., 0.]
-    cost_level = 1.
+    cost_level = 0.25
     radius = 1.5
     epicenter = torch.tensor([1., 0.])
-    uncertainty_level = 0.1
-    net_width = 20
-    net_depth = 1
-    mc_samples = 10000
+    uncertainty_level = 0.3
+    net_width = 6
+    net_depth = 2
+    mc_samples = 50000
     learning_rate = 0.001
     epochs = 1000
 
-    penalty = pnl.PolyPenaltyTensor(3)
+    penalty = pnl.PolyPenaltyTensor(2)
     loss = cf.GaussianKernelCost2DTensor(x_0=city_center[0], y_0=city_center[1],
                                          level=cost_level, radius=radius)
     mu = torch.distributions.multivariate_normal.MultivariateNormal(epicenter, torch.eye(2))
-    # mu = Gaussian2D([1., 0.], np.eye(2))
     i_theta = ITheta(func=loss.cost, penalty=penalty.evaluate, mu=mu,
                      h=uncertainty_level, width=net_width, depth=net_depth,
                      nr_sample=mc_samples)
@@ -184,12 +175,6 @@ if __name__ == '__main__':
     xlossv, ylossv = np.meshgrid(xloss, yloss)
     zloss = loss.cost(torch.from_numpy(xlossv), torch.from_numpy(ylossv))
 
-    # # drawing the contour plot of the epicenter density
-    # xepi = np.arange(-2.5, 2.5, 0.01)
-    # yepi = np.arange(-2.5, 2.5, 0.01)
-    # xepiv, yepiv = np.meshgrid(xepi, yepi)
-    # zepi = mu.density(np.stack([xepiv, yepiv], axis=2))
-
     # Depict illustration
     fig, ax = plt.subplots()
     CS = ax.contour(xlossv, ylossv, zloss, cmap='viridis', levels=7)
@@ -199,3 +184,9 @@ if __name__ == '__main__':
     ax.plot(epicenter[0], epicenter[1], 'rh')
     plt.title(f'Parametric optimizer for uncertainty level h={uncertainty_level}')
     plt.show()
+
+    # # let's see the parameters of the model
+    # print("-----------------------------------------------")
+    # for name, param in i_theta.named_parameters():
+    #     print(f"Layer: {name} | Size: {param.size()} | Values : {param} \n")
+    # print("-----------------------------------------------")
