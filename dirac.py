@@ -121,11 +121,11 @@ def loss_mult(theta, h, distr, cost, penalty: Penalty):
 if __name__=='__main__':
 
     city_center = [0., 0.]
-    cost_level = np.exp(1)
+    cost_level = 1.
     epicenter = [0.5, 0.5]
 
     mu = Dirac2d(epicenter)
-    penalty = PolyPenalty(3)
+    penalty = PolyPenalty(2)
 
     def cost(x, y):
         return cf.gaussian_kernel_cost_2d(x, y, x_0=city_center[0], y_0=city_center[1], level=cost_level)
@@ -153,15 +153,6 @@ if __name__=='__main__':
                + 0.5 * cf.gaussian_kernel_cost_2d(x, y, x_0=city_center_2[0], y_0=city_center_2[1], level=cost_level)
         return cost
 
-    # x_1 = np.arange(-1.5, 3., 0.01)
-    # x_2 = np.arange(-1.5, 3., 0.01)
-    # xv, yv = np.meshgrid(x_1, x_2)
-    # zv = cost_2(xv, yv)
-    # fig = plt.figure()
-    # ax = fig.add_subplot(111, projection='3d')
-    # ax.plot_surface(xv, yv, zv, rstride=1, cstride=1, cmap='viridis', edgecolor='none')
-    # ax.set_title('Cost function')
-    # plt.show()
 
     print(f"Expected value 2: {mu.integrate(cost_2) : .4f}")
 

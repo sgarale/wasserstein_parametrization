@@ -205,6 +205,23 @@ if __name__=='__main__':
     plt.title("Cost functions")
     plt.show()
 
+    # Figure xx.xx
+    x_0 = 0.
+    y_0 = 0.
+    level = 0.5
+    radius = 1.
+    gauss_cost = GaussianKernelCost2D(x_0, y_0, level, radius)
+    x_1 = np.arange(-1.5, 1.5, 0.01)
+    x_2 = np.arange(-1.5, 1.5, 0.01)
+    xv, yv = np.meshgrid(x_1, x_2)
+    zg = gauss_cost.cost(xv, yv)
+
+    fig = plt.figure()
+    ax = fig.add_subplot(111, projection='3d')
+    ax.plot_surface(xv, yv, zg, rstride=1, cstride=1, cmap='coolwarm', edgecolor='none')
+    plt.show()
+    exit()
+
     # two dimensional case with numpy functions
     # -------- insert center points, level, and radius -----------
     x_0 = 2.

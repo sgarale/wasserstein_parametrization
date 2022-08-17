@@ -116,7 +116,18 @@ def train(model, optimizer):
     return output
 
 
+def check_dir(directory):
+    if not os.path.exists(directory):
+        os.makedirs(directory)
+
+
 if __name__ == '__main__':
+
+    # ---- Plots subfolder --------
+    plot_fold = 'gaussian'
+    # -----------------------------
+    plot_fold = f"plots/{plot_fold}"
+    check_dir(plot_fold)
 
     torch.manual_seed(29)
 
@@ -158,9 +169,14 @@ if __name__ == '__main__':
         out_vector.append(-float(out))
     print(f"Parametrized worst case loss: {-out:.4f}")
     plt.plot(np.arange(1, epochs + 1), out_vector)
-    plt.title(f"Training of the worst case loss for h={uncertainty_level}")
+    # ax = plt.gca()
+    # x_left, x_right = ax.get_xlim()
+    # y_low, y_high = ax.get_ylim()
+    # ax.set_aspect(abs((x_right-x_left)/(y_low-y_high)))
+    # plt.title(f"Training of the worst case loss for h={uncertainty_level}")
     plt.xlabel("Epochs")
     plt.ylabel("Worst case loss")
+    plt.savefig(f"{plot_fold}/gauss_training_level_{uncertainty_level}.png", bbox_inches='tight')
     plt.show()
 
     # Drawing the vector field theta
@@ -177,12 +193,14 @@ if __name__ == '__main__':
 
     # Depict illustration
     fig, ax = plt.subplots()
+    ax.set_aspect('equal')
     CS = ax.contour(xlossv, ylossv, zloss, cmap='viridis', levels=7)
     ax.clabel(CS, inline=True, fontsize=10)
     ax.quiver(xv, yv, theta[:, :, 0], theta[:, :, 1], color='g')
     # plt.streamplot(xv, yv, theta[:, :, 0], theta[:, :, 1], density=1.4, linewidth=None, color='#A23BEC')
     ax.plot(epicenter[0], epicenter[1], 'rh')
-    plt.title(f'Parametric optimizer for uncertainty level h={uncertainty_level}')
+    # plt.title(f'Parametric optimizer for uncertainty level h={uncertainty_level}')
+    plt.savefig(f"{plot_fold}/gauss_optimizer_level_{uncertainty_level}.png", bbox_inches='tight')
     plt.show()
 
     # # let's see the parameters of the model
