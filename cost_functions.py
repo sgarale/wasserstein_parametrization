@@ -192,79 +192,81 @@ if __name__=='__main__':
     # This main tests the different cost functions and the different math kernels used for the
     # computations (numpy and pytorch)
 
-    # one dimensional case
-    x_0 = 2
-    x = np.arange(0, 4, 0.01)
-
-    # distance cost function
-    y_d = [distance_cost(i, x_0) for i in x]
-    y_g = [gaussian_kernel_cost(i, x_0, level=0.5) for i in x]
-    plt.plot(x, y_d)
-    plt.plot(x, y_g)
-    plt.legend(["Distance cost", "Gaussian kernel cost"])
-    plt.title("Cost functions")
-    plt.show()
-
-    # Figure xx.xx
-    x_0 = 0.
-    y_0 = 0.
-    level = 0.5
-    radius = 1.
-    gauss_cost = GaussianKernelCost2D(x_0, y_0, level, radius)
-    x_1 = np.arange(-1.5, 1.5, 0.01)
-    x_2 = np.arange(-1.5, 1.5, 0.01)
-    xv, yv = np.meshgrid(x_1, x_2)
-    zg = gauss_cost.cost(xv, yv)
-
-    fig = plt.figure()
-    ax = fig.add_subplot(111, projection='3d')
-    ax.plot_surface(xv, yv, zg, rstride=1, cstride=1, cmap='coolwarm', edgecolor='none')
-    plt.show()
-    exit()
-
-    # two dimensional case with numpy functions
-    # -------- insert center points, level, and radius -----------
-    x_0 = 2.
-    y_0 = 2.
-    level = 0.5
-    radius = 1.
-    gauss_cost = GaussianKernelCost2D(x_0, y_0, level, radius)
-    x_1 = np.arange(0, 4, 0.01)
-    x_2 = np.arange(0, 4, 0.01)
-    xv, yv = np.meshgrid(x_1, x_2)
-    zd = distance_cost_2d(xv, yv, 2, 2)
-    zg = gauss_cost.cost(xv, yv)
-
-    fig = plt.figure()
-    ax = fig.add_subplot(111, projection='3d')
-    ax.plot_surface(xv, yv, zd, rstride=1, cstride=1, cmap='viridis', edgecolor='none')
-    ax.plot_surface(xv, yv, zg, rstride=1, cstride=1, cmap='viridis', edgecolor='none')
-    # ax.legend(["Distance cost", "Gaussian kernel cost"])
-    ax.set_title('2D cost functions')
-    plt.show()
-
-
-    # two dimensional case with pytorch functions
-    # -------- insert center points, level, and radius -----------
-    torch.set_default_dtype(torch.float64)
-    x_0 = 0.
-    y_0 = 0.
-    level = 0.5
-    radius = 1.
-    gauss_cost = GaussianKernelCost2DTensor(x_0, y_0, level, radius)
-    x_1 = np.arange(-2, 2, 0.01)
-    x_2 = np.arange(-2, 2, 0.01)
-    xv, yv = np.meshgrid(x_1, x_2)
-    zd = distance_cost_2d(xv, yv, 0, 0)
-    zg = gauss_cost.cost(torch.from_numpy(xv), torch.from_numpy(yv))
-
-    fig = plt.figure()
-    ax = fig.add_subplot(111, projection='3d')
-    ax.plot_surface(xv, yv, zd, rstride=1, cstride=1, cmap='viridis', edgecolor='none')
-    ax.plot_surface(xv, yv, np.array(zg), rstride=1, cstride=1, cmap='viridis', edgecolor='none')
-    # ax.legend(["Distance cost", "Gaussian kernel cost"])
-    ax.set_title('2D cost functions (pytorch math functions)')
-    plt.show()
+    # # one dimensional case
+    # x_0 = 2
+    # x = np.arange(0, 4, 0.01)
+    #
+    # # distance cost function
+    # y_d = [distance_cost(i, x_0) for i in x]
+    # y_g = [gaussian_kernel_cost(i, x_0, level=0.5) for i in x]
+    # plt.plot(x, y_d)
+    # plt.plot(x, y_g)
+    # plt.legend(["Distance cost", "Gaussian kernel cost"])
+    # plt.title("Cost functions")
+    # plt.show()
+    #
+    # # Figure xx.xx
+    # # -------- insert center points, level, and radius -----------
+    # x_0 = 0.
+    # y_0 = 0.
+    # level = 1.
+    # radius = 1.5
+    # gauss_cost = GaussianKernelCost2D(x_0, y_0, level, radius)
+    # x_1 = np.arange(-1.8, 1.8, 0.01)
+    # x_2 = np.arange(-1.8, 1.8, 0.01)
+    # xv, yv = np.meshgrid(x_1, x_2)
+    # zg = gauss_cost.cost(xv, yv)
+    #
+    # fig = plt.figure()
+    # ax = fig.add_subplot(111, projection='3d')
+    # ax.set_box_aspect((1,1,0.4))
+    # ax.plot_surface(xv, yv, zg, rstride=1, cstride=1, cmap='coolwarm', edgecolor='none')
+    # plt.show()
+    # # exit()
+    #
+    # # two dimensional case with numpy functions
+    # # -------- insert center points, level, and radius -----------
+    # x_0 = 2.
+    # y_0 = 2.
+    # level = 0.5
+    # radius = 1.
+    # gauss_cost = GaussianKernelCost2D(x_0, y_0, level, radius)
+    # x_1 = np.arange(0, 4, 0.01)
+    # x_2 = np.arange(0, 4, 0.01)
+    # xv, yv = np.meshgrid(x_1, x_2)
+    # zd = distance_cost_2d(xv, yv, 2, 2)
+    # zg = gauss_cost.cost(xv, yv)
+    #
+    # fig = plt.figure()
+    # ax = fig.add_subplot(111, projection='3d')
+    # ax.plot_surface(xv, yv, zd, rstride=1, cstride=1, cmap='viridis', edgecolor='none')
+    # ax.plot_surface(xv, yv, zg, rstride=1, cstride=1, cmap='viridis', edgecolor='none')
+    # # ax.legend(["Distance cost", "Gaussian kernel cost"])
+    # ax.set_title('2D cost functions')
+    # plt.show()
+    #
+    #
+    # # two dimensional case with pytorch functions
+    # # -------- insert center points, level, and radius -----------
+    # torch.set_default_dtype(torch.float64)
+    # x_0 = 0.
+    # y_0 = 0.
+    # level = 0.5
+    # radius = 1.
+    # gauss_cost = GaussianKernelCost2DTensor(x_0, y_0, level, radius)
+    # x_1 = np.arange(-2, 2, 0.01)
+    # x_2 = np.arange(-2, 2, 0.01)
+    # xv, yv = np.meshgrid(x_1, x_2)
+    # zd = distance_cost_2d(xv, yv, 0, 0)
+    # zg = gauss_cost.cost(torch.from_numpy(xv), torch.from_numpy(yv))
+    #
+    # fig = plt.figure()
+    # ax = fig.add_subplot(111, projection='3d')
+    # ax.plot_surface(xv, yv, zd, rstride=1, cstride=1, cmap='viridis', edgecolor='none')
+    # ax.plot_surface(xv, yv, np.array(zg), rstride=1, cstride=1, cmap='viridis', edgecolor='none')
+    # # ax.legend(["Distance cost", "Gaussian kernel cost"])
+    # ax.set_title('2D cost functions (pytorch math functions)')
+    # plt.show()
 
     # Depict gradient of the gaussian kernel loss
     x_0 = 0.
