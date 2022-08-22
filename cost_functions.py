@@ -129,8 +129,8 @@ class GaussianKernelCost2D:
 
         denominator = np.power(x - self.x0, 2) + np.power(y - self.y0, 2) - self.radius * self.radius
         cost = self.cost(x, y)
-        nablax = - 2. * cost * x * np.power(self.radius / denominator, 2)
-        nablay = - 2. * cost * y * np.power(self.radius / denominator, 2)
+        nablax = - 2. * cost * (x - self.x0) * np.power(self.radius / denominator, 2)
+        nablay = - 2. * cost * (y - self.y0) * np.power(self.radius / denominator, 2)
         return [nablax, nablay]
 
 
@@ -181,8 +181,8 @@ class GaussianKernelCost2DTensor:
 
         denominator = torch.pow(x - self.x0, 2) + torch.pow(y - self.y0, 2) - self.radius * self.radius
         cost = self.cost(x, y)
-        nablax = - 2. * cost * x * torch.pow(self.radius / denominator, 2)
-        nablay = - 2. * cost * y * torch.pow(self.radius / denominator, 2)
+        nablax = - 2. * cost * (x -self.x0) * torch.pow(self.radius / denominator, 2)
+        nablay = - 2. * cost * (y - self.y0) * torch.pow(self.radius / denominator, 2)
         return [nablax, nablay]
 
 
@@ -279,15 +279,16 @@ if __name__=='__main__':
     xv, yv = np.meshgrid(x_1, x_2)
     zg = gauss_cost.cost(xv, yv)
 
-    x_1 = np.arange(-1.2, 1.2, 0.05)
-    x_2 = np.arange(-1.2, 1.2, 0.05)
-    xv2, yv2 = np.meshgrid(x_1, x_2)
-    zgrad = gauss_cost.gradient(xv2, yv2)
+    x_1 = np.arange(-1.2, 1.3, 0.10)
+    x_2 = np.arange(-1.2, 1.3, 0.10)
+    xvgrad, yvgrad = np.meshgrid(x_1, x_2)
+    zgrad = gauss_cost.gradient(xvgrad, yvgrad)
 
     fig, ax = plt.subplots()
+    ax.set_aspect('equal')
     CS = ax.contour(xv, yv, np.array(zg), cmap='viridis', levels=7)
     ax.clabel(CS, inline=True, fontsize=10)
-    ax.quiver(xv2, yv2, np.array(zgrad[0]), np.array(zgrad[1]), color='g')
+    ax.quiver(xvgrad, yvgrad, np.array(zgrad[0]), np.array(zgrad[1]), color='g')
     plt.title(f'Gradient of the gaussian kernel loss')
     plt.show()
 
@@ -304,15 +305,16 @@ if __name__=='__main__':
     xv, yv = np.meshgrid(x_1, x_2)
     zg = gauss_cost.cost(torch.from_numpy(xv), torch.from_numpy(yv))
 
-    x_1 = np.arange(-1.2, 1.2, 0.05)
-    x_2 = np.arange(-1.2, 1.2, 0.05)
-    xv2, yv2 = np.meshgrid(x_1, x_2)
-    zgradt = gauss_cost.gradient(torch.from_numpy(xv2), torch.from_numpy(yv2))
+    x_1 = np.arange(-1.2, 1.3, 0.1)
+    x_2 = np.arange(-1.2, 1.3, 0.1)
+    xvgrad, yvgrad = np.meshgrid(x_1, x_2)
+    zgradt = gauss_cost.gradient(torch.from_numpy(xvgrad), torch.from_numpy(yvgrad))
 
     fig, ax = plt.subplots()
+    ax.set_aspect('equal')
     CS = ax.contour(xv, yv, np.array(zg), cmap='viridis', levels=7)
     ax.clabel(CS, inline=True, fontsize=10)
-    ax.quiver(xv2, yv2, np.array(zgradt[0]), np.array(zgradt[1]), color='g')
+    ax.quiver(xvgrad, yvgrad, np.array(zgradt[0]), np.array(zgradt[1]), color='g')
     plt.title(f'Gradient of the gaussian kernel loss (pytorch functions)')
     plt.show()
 

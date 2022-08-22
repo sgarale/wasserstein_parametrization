@@ -5,10 +5,35 @@ import pandas as pd
 import torch
 from torch import nn
 from scipy.stats import multivariate_normal
-from scipy import optimize
+from scipy import optimize, integrate
 import cost_functions as cf
 import penalties as pnl
 
+class CorneredModule(nn.Module):
+
+    def __init__(self):
+        super(CorneredModule, self).__init__()
+
+    def forward(self, x):
+        return torch.minimum(torch.maximum(x, torch.tensor([0])),torch.tensor([1]))
+
+
+class ThetaCorneredNetwork(nn.Module):
+
+    def __init__(self, width, depth=1):
+        super(ThetaCorneredNetwork, self).__init__()
+        self.linear_corner_stack = nn.Sequential(
+            nn.Linear(2, width)
+        )
+        for i in range(depth - 1):
+            self.linear_corner_stack.append(CorneredModule())
+            self.linear_corner_stack.append(nn.Linear(width, width))
+        self.linear_corner_stack.append(CorneredModule())
+        self.linear_corner_stack.append(nn.Linear(width, 2))
+
+    def forward(self, x):
+        theta = self.linear_corner_stack(x)
+        return theta
 
 
 class ThetaReLUNetwork(nn.Module):
@@ -68,7 +93,7 @@ class ITheta(nn.Module):
 
     def __init__(self, func, penalty, mu, h, width, depth, nr_sample):
         super(ITheta, self).__init__()
-        self.theta = ThetaReLUNetwork(width, depth)
+        self.theta = ThetaCorneredNetwork(width, depth)
         self.mult_coeff = nn.Parameter(torch.tensor(.1))
         self.penalised_loss = PenalisedLoss(func=func, penalty=penalty, h=h)
         self.mu = mu
@@ -104,7 +129,7 @@ class ITheta_1d(nn.Module):
 
     def __init__(self, func, grad, penalty, mu, h, nr_sample):
         super(ITheta_1d, self).__init__()
-        self.mult_coeff = nn.Parameter(torch.tensor(.5))
+        self.mult_coeff = nn.Parameter(torch.tensor(.3))
         self.penalised_loss = PenalisedLoss_1d(func=func, grad=grad, penalty=penalty, h=h)
         self.mu = mu
         self.nr_sample = nr_sample
@@ -129,6 +154,11 @@ class ITheta_1dnp():
         self.value = None
 
     def loss_to_optim(self, theta):
+        """
+        Compute the loss function for the optimization via Monte Carlo estimation
+        :param theta: float
+        :return: float
+        """
         y = self.mu.rvs(size=self.nr_sample)
         theta_y = theta * np.stack(self.grad(y[:, 0], y[:, 1]), axis=1)
         integral = np.mean(self.func(y[:, 0] + theta_y[:, 0], y[:, 1] + theta_y[:, 1]))
@@ -137,15 +167,31 @@ class ITheta_1dnp():
         res_tmp = - (integral - penal_term)
         return res_tmp[0]
 
-    def optimize(self, x0=None):
+    def loss_to_optim_nquad(self, theta):
+        """
+        Compute the loss function for the optimization via numerical integration
+        :param theta: float
+        :return:
+        """
+        integrand = lambda x, y: self.func(x + theta * self.grad(x, y)[0], y + theta * self.grad(x, y)[1]) * self.mu.pdf([x, y])
+        integral = integrate.nquad(integrand, [[-np.inf, np.inf], [-np.inf, np.inf]])[0]
+        integrand = lambda x, y: (self.grad(x, y)[0] ** 2 + self.grad(x, y)[1] ** 2) * self.mu.pdf([x, y])
+        L2_norm_theta = theta * np.sqrt(integrate.nquad(integrand, [[-np.inf, np.inf], [-np.inf, np.inf]])[0])
+        penal_term = self.h * self.penalty(L2_norm_theta / self.h)
+        res_tmp = - (integral - penal_term)
+        return res_tmp[0]
+
+    def optimize(self, x0=None, method='montecarlo'):
         if x0 == None:
             x0 = self.theta
-        res = optimize.basinhopping(self.loss_to_optim, x0=x0, stepsize=0.1, niter=50, niter_success=10)
+        if method == 'montecarlo':
+            res = optimize.basinhopping(self.loss_to_optim, x0=x0, stepsize=0.1, niter=50, niter_success=10)
+        else:
+            res = optimize.basinhopping(self.loss_to_optim_nquad, x0=x0, stepsize=0.1, niter=50, niter_success=10)
         self.theta = res.x[0]
-        # test_theta = np.arange(0.005, 1., 0.005)
-        # test_values = [self.loss_to_optim(th) for th in test_theta]
-        # self.theta = test_theta[np.argmin(test_values)]
         self.value = - self.loss_to_optim(self.theta)
+
+
 
 
 
@@ -166,7 +212,7 @@ def check_dir(directory):
 if __name__ == '__main__':
 
     # ---- Plots subfolder --------
-    plot_fold = 'gaussian'
+    plot_fold = 'gaussian_small'
     # -----------------------------
     plot_fold = f"plots/{plot_fold}"
     check_dir(plot_fold)
@@ -184,15 +230,16 @@ if __name__ == '__main__':
     cost_level = 1.
     radius = 1.5
     epicenter = torch.tensor([1., 0.])
-    uncertainty_level = 0.3
+    variance = 1.
+    uncertainty_level = 0.015
     net_width = 15
     net_depth = 2
     mc_samples = 2**15
-    mc_samples_1d = 50000
-    learning_rate = 0.005
-    learning_rate_1d = 0.01
-    epochs = 1050
-    rolling_window = 50
+    mc_samples_1d = 2**16
+    learning_rate = 0.001
+    learning_rate_1d = 0.005
+    epochs = 1100
+    rolling_window = 100
     epochs_1d = epochs
 
     # initializing the objects: penalisation function, loss function, baseline measure, operators
@@ -202,8 +249,8 @@ if __name__ == '__main__':
                                          level=cost_level, radius=radius)
     loss_np = cf.GaussianKernelCost2D(x_0=city_center[0], y_0=city_center[1],
                                          level=cost_level, radius=radius)
-    mu = torch.distributions.multivariate_normal.MultivariateNormal(epicenter, torch.eye(2))
-    mu_np = multivariate_normal(epicenter, np.eye(2))
+    mu = torch.distributions.multivariate_normal.MultivariateNormal(epicenter, variance * torch.eye(2))
+    mu_np = multivariate_normal(epicenter, variance * np.eye(2))
     i_theta = ITheta(func=loss.cost, penalty=penalty.evaluate, mu=mu,
                      h=uncertainty_level, width=net_width, depth=net_depth,
                      nr_sample=mc_samples)
@@ -213,12 +260,14 @@ if __name__ == '__main__':
                            h=uncertainty_level, nr_sample=mc_samples_1d)
 
     # computing the expected loss via montecarlo
-    rnd_y = mu.sample([1000000])
+    exp_samples = 1000000
+    rnd_y = mu.sample([exp_samples])
     expected_loss = torch.mean(loss.cost(rnd_y[:, 0], rnd_y[:, 1]))
+    exp_loss_mc_err = 2.33 * torch.std(loss.cost(rnd_y[:, 0], rnd_y[:, 1])) / np.sqrt(exp_samples)
     print("-------------------------------------")
-    print(f"Expected Loss: {expected_loss:.4f}")
+    print(f"Expected Loss: {expected_loss:.4f} --> [{expected_loss - exp_loss_mc_err:.4f}, {expected_loss + exp_loss_mc_err:.4f}]")
 
-    # computing the worst case loss at the uncertainty level h via one dimensional optimization (via basinhopping)
+    # # computing the worst case loss at the uncertainty level h via one dimensional optimization (via basinhopping)
     # i_theta_1dnp.optimize()
     # print(f"Exact worst case loss: {i_theta_1dnp.value:.4f}")
     # print(f"Exact worst case optimizer: {i_theta_1dnp.theta:.4f}")
@@ -229,9 +278,14 @@ if __name__ == '__main__':
     # for i in range(epochs_1d):
     #     ws_loss = train(i_theta_1d, optm)
     #     ws_loss_1d.append(-float(ws_loss))
-    # print(f"Exact worst case loss: {-ws_loss:.4f}")
+    # ws_loss_1d = pd.Series(ws_loss_1d).rolling(rolling_window).mean()
+    # # print("-----------------------------------------------")
+    # print(f"Exact worst case loss: {ws_loss_1d[ws_loss_1d.shape[0]-1]:.4f}")
+    # for name, param in i_theta_1d.named_parameters():
+    #     print(f"Exact optimizer theta: {param:.8f}")
+    # print("-----------------------------------------------")
     # # plotting the training phase for the 1d optimization
-    # plt.plot(np.arange(1, epochs + 1), ws_loss_1d, label='1d optim')
+    # plt.plot(np.arange(1, epochs_1d + 1), ws_loss_1d, label='1d optim')
 
     # computing the worst case loss at the uncertainty level h via nn optimization
     optm = torch.optim.Adam(i_theta.parameters(), lr=learning_rate)
@@ -242,12 +296,8 @@ if __name__ == '__main__':
     out_vector = pd.Series(out_vector).rolling(rolling_window).mean()
     print(f"Parametrized worst case loss: {out_vector[out_vector.shape[0]-1]:.4f}")
     # plotting the training phase
-    plt.plot(np.arange(1, out_vector.shape[0] + 1), out_vector, label='nn optim')
-    plt.plot(np.arange(1, out_vector.shape[0] + 1), np.repeat(0.2682, epochs), label='one-d optim')
-    # ax = plt.gca()
-    # x_left, x_right = ax.get_xlim()
-    # y_low, y_high = ax.get_ylim()
-    # ax.set_aspect(abs((x_right-x_left)/(y_low-y_high)))
+    plt.plot(np.arange(1, out_vector.shape[0] + 1), out_vector, label='NN optimizer')
+    plt.plot(np.arange(1, out_vector.shape[0] + 1), np.repeat(0.23919543, epochs), label='Exact optimizer')
     # plt.title(f"Training of the worst case loss for h={uncertainty_level}")
     plt.xlabel("Epochs")
     plt.ylabel("Worst case loss")
