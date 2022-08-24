@@ -1,4 +1,5 @@
 import os
+import copy
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
@@ -14,29 +15,49 @@ if __name__ == '__main__':
 
     torch.set_default_dtype(torch.float64)
     # ---------------------- Inputs ----------------------
-    plot_fold = 'gaussian_mult_simpl'
-    eval_type = 'neural_network'            # choose among ['neural_network','one_dimensional','both']
+    plot_fold = 'gaussian_mult_4x20_v3'
+    eval_type = 'both'            # choose among ['neural_network','one_dimensional','both']
     city_center = [0., 0.]
     cost_level = 1.
     radius = 1.5
     epicenter = torch.tensor([1., 0.])
     variance = 1.
-    h_levels = np.arange(0.015, 0.315, 0.015)
-    principal_training_level = 0.015            # uncertainty level used to train the gradient of the function
-    neural_network_training = 'simplified'  # choose among ['full', 'simplified']
+    h_levels = np.arange(0.001, 0.021, 0.001)
+    principal_training_level = 0.03            # uncertainty level used to train the gradient of the function
+    neural_network_training = 'full'  # choose among ['full', 'simplified']
     net_width = 20
-    net_depth = 2
-    mc_samples = 2**14
-    mc_samples_1d = 2**15
-    learning_rate = 0.002
-    learning_rate_1d = 0.005
+    net_depth = 4
+    mc_samples = 2**15
+    mc_samples_1d = 2**16
+    learning_rate = 0.001
+    learning_rate_1d = 0.001
     epochs = 1100
     rolling_window = 100
     epochs_1d = epochs
+    manual_loss_list = None
     # ----------------------------------------------------
 
     plot_fold = f"plots/{plot_fold}"
     gauss.check_dir(plot_fold)
+
+    # writing summary
+    dump_summary = open(os.path.join(plot_fold, "summary.txt"), 'w')
+    dump_summary.write(f'"eval type: {eval_type}'
+                       f'\ncity center: {city_center}, cost level: {cost_level}, radius: {radius}'
+                       f'\nepicenter earthquake: {epicenter}, variance: {variance}')
+    if eval_type in ['neural_network', 'both']:
+        dump_summary.write(
+                       f'\nuncertainty levels: {h_levels.tolist()}'
+                       f'\nneural network training: {neural_network_training}')
+        if neural_network_training == 'simplified':
+            dump_summary.write(f'\nprincipal training level: {principal_training_level}')
+        dump_summary.write(f'\nneural network depth: {net_depth}\nneural network width: {net_width}'
+                           f'\nmc saples: {mc_samples}\nlearning rate: {learning_rate}\nepochs: {epochs}'
+                           f'\nrolling window: {rolling_window}')
+    if eval_type in ['one_dimensional', 'both']:
+        dump_summary.write(f'\n----------- 1-d optimization --------------'
+                           f'\nmc samples: {mc_samples_1d}\nlearning rate: {learning_rate_1d}\nepochs: {epochs_1d}')
+
 
     # fixing the seed
     torch.manual_seed(29)
@@ -74,7 +95,8 @@ if __name__ == '__main__':
         # cycling on the uncertainty levels
         print("starting one dimensional optimization...")
         for j in range(h_levels.shape[0]):
-            # initializing the objects: penalisation function, loss function, baseline measure, operators
+
+            # initializing the one dimesional neural network
             i_theta_1d = gauss.ITheta_1d(func=loss.cost, grad=loss.gradient, penalty=penalty.evaluate, mu=mu,
                                    h=h_levels[j], nr_sample=mc_samples_1d)
 
@@ -90,8 +112,8 @@ if __name__ == '__main__':
                 param_list.append(param)
 
             # plotting the training phase for the 1d optimization
-            plt.plot(np.arange(1, epochs_1d + 1), ws_loss_1d, label='1d optim')
-            plt.savefig(f"{plot_fold}/training_1d_level_{h_levels[j]:.3f}.png", bbox_inches='tight')
+            plt.plot(np.arange(1, epochs_1d + 1), ws_loss_1d, label='asymptotic optimizer')
+            plt.savefig(f"{plot_fold}/training_1d_level_{h_levels[j]:.5f}.png", bbox_inches='tight')
             plt.clf()
         dump_file.write("\nWorst case losses: ")
         for ls in loss_list:
@@ -108,7 +130,7 @@ if __name__ == '__main__':
         dump_file_nn = open(plot_fold + "/nn_optim.txt", "w")
         dump_file_nn.write("Uncertainty levels: ")
         for h in h_levels:
-            dump_file_nn.write(f"{h:.4f},")
+            dump_file_nn.write(f"{h:.6f},")
 
         if neural_network_training == 'simplified':
 
@@ -118,6 +140,8 @@ if __name__ == '__main__':
 
             # computing the worst case loss at the chosen principal uncertainty level via nn optimization
             optm = torch.optim.Adam(i_theta_reference.parameters(), lr=learning_rate)
+            for i in range(epochs):
+                gauss.train(i_theta_reference, optm)
 
         for j in range(h_levels.shape[0]):
 
@@ -126,13 +150,14 @@ if __name__ == '__main__':
                                    nr_sample=mc_samples)
 
             if neural_network_training == 'simplified':
-                i_theta.theta = i_theta_reference.theta
+                i_theta.theta = copy.deepcopy(i_theta_reference.theta)
                 for param in i_theta.theta.parameters():
                     param.requires_grad = False
 
             # computing the worst case loss at the uncertainty level h via nn optimization
             if neural_network_training == 'simplified':
-                optm = torch.optim.Adam(filter(lambda p: p.requires_grad, i_theta.parameters()), lr=learning_rate)
+                # optm = torch.optim.Adam(i_theta.parameters(), lr=learning_rate)
+                optm = torch.optim.Adam(filter(lambda p: p.requires_grad, i_theta.parameters()), lr=learning_rate_1d)
             else:
                 optm = torch.optim.Adam(i_theta.parameters(), lr=learning_rate)
 
@@ -144,13 +169,19 @@ if __name__ == '__main__':
             loss_nn_list.append(out_vector[out_vector.shape[0] - 1])
 
             # plotting the training phase
-            plt.plot(np.arange(1, out_vector.shape[0] + 1), out_vector, label='NN optimizer')
+            plt.plot(np.arange(1, out_vector.shape[0] + 1), out_vector, label='neural network optimizer')
             if eval_type == 'both':
-                plt.plot(np.arange(1, out_vector.shape[0] + 1), np.repeat(loss_list[j], epochs), label='Exact optimizer')
+                plt.plot(np.arange(1, out_vector.shape[0] + 1), np.repeat(loss_list[j], epochs), label='asymptotic optimizer')
+            if isinstance(manual_loss_list, list):
+                plt.plot(np.arange(1, out_vector.shape[0] + 1), np.repeat(manual_loss_list[j], epochs),
+                         label='asymptotic optimizer')
+            # start particular settings !!!!!!!!!!!!! erase after evaluation
+            plt.ylim(0.23, 0.2425)
+            # end particular settings
             plt.xlabel("Epochs")
             plt.ylabel("Worst case loss")
             plt.legend()
-            plt.savefig(f"{plot_fold}/training_nn_level_{h_levels[j]:.3f}.png", bbox_inches='tight')
+            plt.savefig(f"{plot_fold}/training_nn_level_{h_levels[j]:.5f}.png", bbox_inches='tight')
             plt.clf()
 
         dump_file_nn.write("\nWorst case losses: ")
@@ -163,11 +194,11 @@ if __name__ == '__main__':
             x = [0.] + h_levels.tolist()
             loss_list = [expected_loss] + loss_list
             loss_nn_list = [expected_loss] + loss_nn_list
-            plt.plot(x, loss_list, label='1-d optimization')
             plt.plot(x, loss_nn_list, label='neural network optimization')
+            plt.plot(x, loss_list, label='asymptotic optimization')
             plt.xlabel("Uncertainty level")
             plt.ylabel("Worst case loss")
             plt.legend()
             plt.savefig(f"{plot_fold}/worst_case_loss_gaussian.png", bbox_inches='tight')
 
-    print(f"elaboration time: {(time.time() - start)/60.:.2f} minuti")
+    print(f"elaboration time: {(time.time() - start)/60.:.2f} minutes")
