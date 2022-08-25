@@ -214,14 +214,14 @@ if __name__ == '__main__':
 
     torch.set_default_dtype(torch.float64)
     # ---------------------- Inputs ----------------------
-    plot_fold = 'gaussian_v4'
+    plot_fold = 'gaussian_0.5'
     eval_type = 'both'  # choose among ['neural_network','one_dimensional','both']
     city_center = [0., 0.]
     cost_level = 1.
     radius = 1.5
     epicenter = torch.tensor([1., 0.])
     variance = 1.
-    uncertainty_level = 0.003
+    uncertainty_level = 0.5
     net_width = 20
     net_depth = 4
     mc_samples = 2**15
@@ -339,7 +339,7 @@ if __name__ == '__main__':
         plt.xlabel("Epochs")
         plt.ylabel("Worst case loss")
         plt.legend()
-        plt.savefig(f"{plot_fold}/gauss_training_level_{uncertainty_level:.5f}.png", bbox_inches='tight')
+        plt.savefig(f"{plot_fold}/training_nn_level_{uncertainty_level:.5f}.png", bbox_inches='tight')
         plt.clf()
 
         print("neural network optimization ended")
@@ -365,7 +365,7 @@ if __name__ == '__main__':
         # plt.streamplot(xv, yv, theta[:, :, 0], theta[:, :, 1], density=1.4, linewidth=None, color='#A23BEC')
         ax.plot(epicenter[0], epicenter[1], 'rh')
         # plt.title(f'Parametric optimizer for uncertainty level h={uncertainty_level}')
-        plt.savefig(f"{plot_fold}/gauss_optimizer_level_{uncertainty_level:.5f}.png", bbox_inches='tight')
+        plt.savefig(f"{plot_fold}/nn_optimizer_level_{uncertainty_level:.5f}.png", bbox_inches='tight')
 
         print(f"elaboration time: {time.time() - start:.2f} seconds")
 

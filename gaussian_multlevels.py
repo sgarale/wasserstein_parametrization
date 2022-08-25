@@ -15,7 +15,7 @@ if __name__ == '__main__':
 
     torch.set_default_dtype(torch.float64)
     # ---------------------- Inputs ----------------------
-    plot_fold = 'gaussian_mult_4x20_v3'
+    plot_fold = 'gaussian_mult_4x20_v4'
     eval_type = 'both'            # choose among ['neural_network','one_dimensional','both']
     city_center = [0., 0.]
     cost_level = 1.
@@ -184,18 +184,44 @@ if __name__ == '__main__':
             plt.savefig(f"{plot_fold}/training_nn_level_{h_levels[j]:.5f}.png", bbox_inches='tight')
             plt.clf()
 
+            # Drawing the vector field theta
+            x = np.arange(-1.7, 1.85, 0.15)
+            y = np.arange(-1.7, 1.85, 0.15)
+            xv, yv = np.meshgrid(x, y)
+            theta = i_theta.theta(torch.stack([torch.from_numpy(xv), torch.from_numpy(yv)], dim=2)).detach().numpy()
+
+            # drawing the contour plot of the loss function
+            xloss = np.arange(-1.7, 1.71, 0.01)
+            yloss = np.arange(-1.7, 1.71, 0.01)
+            xlossv, ylossv = np.meshgrid(xloss, yloss)
+            zloss = loss.cost(torch.from_numpy(xlossv), torch.from_numpy(ylossv))
+
+            # Depict illustration
+            fig, ax = plt.subplots()
+            ax.set_aspect('equal')
+            CS = ax.contour(xlossv, ylossv, zloss, cmap='viridis', levels=7)
+            ax.clabel(CS, inline=True, fontsize=10)
+            ax.quiver(xv, yv, theta[:, :, 0], theta[:, :, 1], color='g')
+            ax.plot(epicenter[0], epicenter[1], 'rh')
+            plt.savefig(f"{plot_fold}/nn_optimizer_level_{h_levels[j]:.5f}.png", bbox_inches='tight')
+            plt.clf()
+
         dump_file_nn.write("\nWorst case losses: ")
         for ls in loss_nn_list:
             dump_file_nn.write(f"{ls:.8f},")
 
         print("neural network optimization ended")
 
-        if eval_type == 'both':
+        if (eval_type == 'both') or ((eval_type == 'neural_network') and (isinstance(manual_loss_list, list))):
             x = [0.] + h_levels.tolist()
-            loss_list = [expected_loss] + loss_list
             loss_nn_list = [expected_loss] + loss_nn_list
             plt.plot(x, loss_nn_list, label='neural network optimization')
-            plt.plot(x, loss_list, label='asymptotic optimization')
+            if isinstance(manual_loss_list, list):
+                manual_loss_list = [expected_loss] + manual_loss_list
+                plt.plot(x, manual_loss_list, label='asymptotic optimization')
+            else:
+                loss_list = [expected_loss] + loss_list
+                plt.plot(x, loss_list, label='asymptotic optimization')
             plt.xlabel("Uncertainty level")
             plt.ylabel("Worst case loss")
             plt.legend()
