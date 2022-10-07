@@ -13,20 +13,20 @@ if __name__ == '__main__':
 
     torch.set_default_dtype(torch.float64)
     # ---------------------- Inputs ----------------------
-    plot_fold = 'transfer'
+    plot_fold = 'transfer_0.5_v2'
     city_center = [0., 0.]
     cost_level = 1.
     radius = 1.5
     epicenter = torch.tensor([1., 0.])
     variance = 1.
-    epicenter_transfered = [torch.tensor([1.5, 0.]), torch.tensor([0.5, 0.]), torch.tensor([0., 0.]), torch.tensor([-0.5, 0.])]
-    variance_transfered = [1., 1., 1., 1.]
+    epicenter_transfered = [torch.tensor([1.5, 0.]), torch.tensor([0.5, 0.]), torch.tensor([0., 0.]), torch.tensor([-0.5, 0.]), torch.tensor([-1., 0.]), torch.tensor([-1.5, 0.])]
+    variance_transfered = [1., 1., 1., 1., 1., 1.]
     uncertainty_level = 0.5
     net_width = 20
     net_depth = 4
     mc_samples_reference = 2**16
-    mc_samples = 2**12
-    mc_samples_transfer = 2**10
+    mc_samples = 2**16
+    mc_samples_transfer = 2**12
     learning_rate = 0.001
     learning_rate_transfer = 0.001
     epochs = 1100
@@ -88,7 +88,7 @@ if __name__ == '__main__':
 
         # initializing the new reference measure
         mu = torch.distributions.multivariate_normal.MultivariateNormal(epicenter_transfered[j], variance_transfered[j] * torch.eye(2))
-        #initializing the neural network
+        # initializing the neural network
         i_theta = gauss.ITheta(func=loss.cost, penalty=penalty.evaluate, mu=mu,
                          h=uncertainty_level, width=net_width, depth=net_depth,
                          nr_sample=mc_samples)
