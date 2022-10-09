@@ -156,7 +156,7 @@ class GaussianKernelCost2DTensor:
         """
         :param x: flaot or torch tensor
         :param y: flaot or torch tensor
-        :return: numpy ndarray
+        :return: pytorch tensor
         """
         if isinstance(x, float):
             x = torch.tensor([x])
@@ -185,6 +185,44 @@ class GaussianKernelCost2DTensor:
         nablay = - 2. * cost * (y - self.y0) * torch.pow(self.radius / denominator, 2)
         return [nablax, nablay]
 
+
+class DoubleGaussianKernelCost2DTensor:
+    """
+    Differentiable cost function with compact support and double dome shape.
+    """
+
+    def __init__(self, x_1, y_1, x_2, y_2, level_1=1., radius_1=1., level_2=1., radius_2=1.):
+        """
+        :param x_1: float
+        :param y_1: float
+        :param x_2: float
+        :param y_2: float
+        :param level_1: float
+        :param radius_1: float
+        :param level_2: float
+        :param radius_2: float
+        """
+        self.dome_1 = GaussianKernelCost2DTensor(x_0=x_1, y_0=y_1, level=level_1, radius=radius_1)
+        self.dome_2 = GaussianKernelCost2DTensor(x_0=x_2, y_0=y_2, level=level_2, radius=radius_2)
+
+    def cost(self, x, y):
+        """
+        :param x: flaot or torch tensor
+        :param y: flaot or torch tensor
+        :return: pytorch tensor
+        """
+        return self.dome_1.cost(x, y) + self.dome_2.cost(x, y)
+
+    def gradient(self, x, y):
+        """
+        Gives the gradient of the function at the points x, y.
+        :param x: float or pytorch tensor
+        :param y: float or pytorch tensor
+        :return: list of pytorch tensor
+        """
+        nabla_1 = self.dome_1.gradient(x, y)
+        nabla_2 = self.dome_2.gradient(x, y)
+        return [nabla_1[0] + nabla_2[0], nabla_1[1] + nabla_2[1]]
 
 
 if __name__=='__main__':
@@ -269,46 +307,100 @@ if __name__=='__main__':
     # plt.show()
 
     # Depict gradient of the gaussian kernel loss
-    x_0 = 0.
-    y_0 = 0.
-    level = 0.5
-    radius = 1.
-    gauss_cost = GaussianKernelCost2D(x_0, y_0, level, radius)
-    x_1 = np.arange(-1.2, 1.2, 0.01)
-    x_2 = np.arange(-1.2, 1.2, 0.01)
-    xv, yv = np.meshgrid(x_1, x_2)
-    zg = gauss_cost.cost(xv, yv)
+    # x_0 = 0.
+    # y_0 = 0.
+    # level = 0.5
+    # radius = 1.
+    # gauss_cost = GaussianKernelCost2D(x_0, y_0, level, radius)
+    # x_1 = np.arange(-1.2, 1.2, 0.01)
+    # x_2 = np.arange(-1.2, 1.2, 0.01)
+    # xv, yv = np.meshgrid(x_1, x_2)
+    # zg = gauss_cost.cost(xv, yv)
+    #
+    # x_1 = np.arange(-1.2, 1.3, 0.10)
+    # x_2 = np.arange(-1.2, 1.3, 0.10)
+    # xvgrad, yvgrad = np.meshgrid(x_1, x_2)
+    # zgrad = gauss_cost.gradient(xvgrad, yvgrad)
+    #
+    # fig, ax = plt.subplots()
+    # ax.set_aspect('equal')
+    # CS = ax.contour(xv, yv, np.array(zg), cmap='viridis', levels=7)
+    # ax.clabel(CS, inline=True, fontsize=10)
+    # ax.quiver(xvgrad, yvgrad, np.array(zgrad[0]), np.array(zgrad[1]), color='g')
+    # plt.title(f'Gradient of the gaussian kernel loss')
+    # plt.show()
 
-    x_1 = np.arange(-1.2, 1.3, 0.10)
-    x_2 = np.arange(-1.2, 1.3, 0.10)
-    xvgrad, yvgrad = np.meshgrid(x_1, x_2)
-    zgrad = gauss_cost.gradient(xvgrad, yvgrad)
+    # # Depict gradient of the gaussian kernel loss using pytorch functions
+    # torch.set_default_dtype(torch.float64)
+    # x_0 = 0.
+    # y_0 = 0.
+    # level = 0.5
+    # radius = 1.
+    # gauss_cost = GaussianKernelCost2DTensor(x_0, y_0, level, radius)
+    # x_1 = np.arange(-1.2, 1.2, 0.01)
+    # x_2 = np.arange(-1.2, 1.2, 0.01)
+    # xv, yv = np.meshgrid(x_1, x_2)
+    # zg = gauss_cost.cost(torch.from_numpy(xv), torch.from_numpy(yv))
+    #
+    # x_1 = np.arange(-1.2, 1.3, 0.1)
+    # x_2 = np.arange(-1.2, 1.3, 0.1)
+    # xvgrad, yvgrad = np.meshgrid(x_1, x_2)
+    # zgradt = gauss_cost.gradient(torch.from_numpy(xvgrad), torch.from_numpy(yvgrad))
+    #
+    # fig, ax = plt.subplots()
+    # ax.set_aspect('equal')
+    # CS = ax.contour(xv, yv, np.array(zg), cmap='viridis', levels=7)
+    # ax.clabel(CS, inline=True, fontsize=10)
+    # ax.quiver(xvgrad, yvgrad, np.array(zgradt[0]), np.array(zgradt[1]), color='g')
+    # plt.title(f'Gradient of the gaussian kernel loss (pytorch functions)')
+    # plt.show()
+    #
+    # print(f"Nabla x is equal: {np.allclose(zgrad[0], np.array(zgradt[0]))}")
+    # print(f"Nabla y is equal: {np.allclose(zgrad[1], np.array(zgradt[1]))}")
 
-    fig, ax = plt.subplots()
-    ax.set_aspect('equal')
-    CS = ax.contour(xv, yv, np.array(zg), cmap='viridis', levels=7)
-    ax.clabel(CS, inline=True, fontsize=10)
-    ax.quiver(xvgrad, yvgrad, np.array(zgrad[0]), np.array(zgrad[1]), color='g')
-    plt.title(f'Gradient of the gaussian kernel loss')
+    # double dome cost with pytorch functions
+    # -------- insert center points, level, and radius -----------
+    torch.set_default_dtype(torch.float64)
+    x_1 = 0.
+    y_1 = 0.
+    level_1 = 0.5
+    radius_1 = 1.
+    x_2 = 1.25
+    y_2 = 0.
+    level_2 = 0.3
+    radius_2 = 0.75
+    double_dome_cost = DoubleGaussianKernelCost2DTensor(x_1, y_1, x_2, y_2, level_1, radius_1, level_2, radius_2)
+    x_ticks = np.arange(-1.2, 2.2, 0.01)
+    y_ticks = np.arange(-1.2, 1.2, 0.01)
+    xv, yv = np.meshgrid(x_ticks, y_ticks)
+    zg = double_dome_cost.cost(torch.from_numpy(xv), torch.from_numpy(yv))
+
+    fig = plt.figure()
+    ax = fig.add_subplot(111, projection='3d')
+    ax.plot_surface(xv, yv, np.array(zg), rstride=1, cstride=1, cmap='viridis', edgecolor='none')
+    ax.set_title('Double dome cost function')
     plt.show()
 
-
-    # Depict gradient of the gaussian kernel loss using pytorch functions
+    # Depict gradient of the double dome loss using pytorch functions
     torch.set_default_dtype(torch.float64)
-    x_0 = 0.
-    y_0 = 0.
-    level = 0.5
-    radius = 1.
-    gauss_cost = GaussianKernelCost2DTensor(x_0, y_0, level, radius)
-    x_1 = np.arange(-1.2, 1.2, 0.01)
-    x_2 = np.arange(-1.2, 1.2, 0.01)
-    xv, yv = np.meshgrid(x_1, x_2)
-    zg = gauss_cost.cost(torch.from_numpy(xv), torch.from_numpy(yv))
+    x_1 = 0.
+    y_1 = 0.
+    level_1 = 0.5
+    radius_1 = 1.
+    x_2 = 1.25
+    y_2 = 0.
+    level_2 = 0.3
+    radius_2 = 0.75
+    double_dome_cost = DoubleGaussianKernelCost2DTensor(x_1, y_1, x_2, y_2, level_1, radius_1, level_2, radius_2)
+    x_ticks = np.arange(-1.2, 2.2, 0.01)
+    y_ticks = np.arange(-1.2, 1.2, 0.01)
+    xv, yv = np.meshgrid(x_ticks, y_ticks)
+    zg = double_dome_cost.cost(torch.from_numpy(xv), torch.from_numpy(yv))
 
-    x_1 = np.arange(-1.2, 1.3, 0.1)
-    x_2 = np.arange(-1.2, 1.3, 0.1)
-    xvgrad, yvgrad = np.meshgrid(x_1, x_2)
-    zgradt = gauss_cost.gradient(torch.from_numpy(xvgrad), torch.from_numpy(yvgrad))
+    x_ticks_coarse = np.arange(-1.2, 2.2, 0.1)
+    y_ticks_coarse = np.arange(-1.2, 1.3, 0.1)
+    xvgrad, yvgrad = np.meshgrid(x_ticks_coarse, y_ticks_coarse)
+    zgradt = double_dome_cost.gradient(torch.from_numpy(xvgrad), torch.from_numpy(yvgrad))
 
     fig, ax = plt.subplots()
     ax.set_aspect('equal')
@@ -317,6 +409,3 @@ if __name__=='__main__':
     ax.quiver(xvgrad, yvgrad, np.array(zgradt[0]), np.array(zgradt[1]), color='g')
     plt.title(f'Gradient of the gaussian kernel loss (pytorch functions)')
     plt.show()
-
-    print(f"Nabla x is equal: {np.allclose(zgrad[0], np.array(zgradt[0]))}")
-    print(f"Nabla y is equal: {np.allclose(zgrad[1], np.array(zgradt[1]))}")
