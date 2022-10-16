@@ -225,6 +225,26 @@ class DoubleGaussianKernelCost2DTensor:
         return [nabla_1[0] + nabla_2[0], nabla_1[1] + nabla_2[1]]
 
 
+class CallPayoff:
+    """
+    Payoff of the call option with strike K: (x - K)^+.
+    """
+
+    def __init__(self, K):
+        """
+        :param K: float
+        """
+        self.K = torch.tensor(K)
+
+    def cost(self, x):
+        """
+        :param x: float or pytorch tensor
+        :return: pytorch tensor
+        """
+        return torch.maximum(x - self.K, 0)
+
+
+
 if __name__=='__main__':
 
     # This main tests the different cost functions and the different math kernels used for the
