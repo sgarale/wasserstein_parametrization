@@ -225,23 +225,26 @@ class DoubleGaussianKernelCost2DTensor:
         return [nabla_1[0] + nabla_2[0], nabla_1[1] + nabla_2[1]]
 
 
-class CallPayoff:
+class BullSpread:
     """
-    Payoff of the call option with strike K: (x - K)^+.
+    Payoff of the bull call spread option with lower strike K_long and upper strike K_short.
+    Payoff: (x - K_long)^+ - (x - K_short)^+
     """
 
-    def __init__(self, K):
+    def __init__(self, K_long, K_short):
         """
-        :param K: float
+        :param K_long: float
+        :param K_short: float
         """
-        self.K = torch.tensor(K)
+        self.K_long = torch.tensor(K_long)
+        self.K_short = torch.tensor(K_short)
 
     def cost(self, x):
         """
         :param x: float or pytorch tensor
         :return: pytorch tensor
         """
-        return torch.maximum(x - self.K, 0)
+        return torch.maximum(x - self.K_long, torch.tensor(0)) - torch.maximum(x - self.K_short, torch.tensor(0))
 
 
 

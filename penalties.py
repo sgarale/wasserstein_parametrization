@@ -35,3 +35,19 @@ class PolyPenaltyTensor(PolyPenalty):
         if x < 0:
             raise Exception(f"Penalty function is defined only for positive numbers. Passed {x: .4f} instead.")
         return torch.pow(x, self.p)
+
+
+
+class InfinitePenalty(Penalty):
+
+    def __init__(self, level):
+        super().__init__()
+        if level <= 0:
+            raise Exception(f'Infinite penalty level must be positive. Passed {level:.4f}')
+        self.penal_type = 'Infinite penalty'
+        self.level = level
+
+    def evaluate(self, x):
+        if x > self.level:
+            return torch.tensor(float('inf'))
+        return torch.tensor(0.)

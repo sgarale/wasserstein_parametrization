@@ -38,6 +38,21 @@ def blackscholes_option(S, K, T, r, q, sigma, flag='Call'):
 
     return price
 
+def bull_call_spread(S, K_long, K_short, T, r, q, sigma):
+    """
+    Computes the analytical price of a bull call spread using the GBM model (Black-Scholes formula).
+    :param S: float, initial level of the asset
+    :param K_long: float, strike of the long call option
+    :param K_short: float, strike of the short call option
+    :param T: float, maturity
+    :param r: float, zero coupon risk free rate
+    :param q: float, dividend rate
+    :param sigma: float, volatility
+    :param flag: str, available choices: "Call", "Put"
+    :return: float
+    """
+    return blackscholes_option(S, K_long, T, r, q, sigma) - blackscholes_option(S, K_short, T, r, q, sigma)
+
 
 class MartReLUNetwork(nn.Module):
 
@@ -70,8 +85,8 @@ class PenalisedLossMart(nn.Module):
 
     def forward(self, y, theta_y):
         s = self.randomizer.sample(y.shape[0])
-        integral = torch.mean(self.func(torch.exp(y + s * theta_y)))
-        Lp_norm_theta = torch.pow(torch.mean(torch.pow(torch.abs(theta_y), self.p)), 1./self.p) #TODO: insert the log scaling
+        integral = torch.mean(self.func(y + s * theta_y))
+        Lp_norm_theta = torch.pow(torch.mean(torch.pow(torch.abs(theta_y), self.p)), 1./self.p)
         penal_term = self.h * self.penalty(torch.pow(self.cp * Lp_norm_theta, 2) / self.h)
         return - (integral - penal_term)
 
@@ -82,14 +97,13 @@ class IThetaMart(nn.Module):
     def __init__(self, func, penalty, p, mu, h, width, depth, nr_sample):
         super(IThetaMart, self).__init__()
         self.theta = MartReLUNetwork(width, depth)
-        self.mult_coeff = nn.Parameter(torch.tensor(.1))
         self.penalised_loss = PenalisedLossMart(func=func, penalty=penalty, p=p, h=h)
         self.mu = mu
         self.nr_sample = nr_sample
 
     def forward(self):
         y = self.mu.sample([self.nr_sample])
-        theta_y = self.mult_coeff * self.theta(y)
+        theta_y = self.theta(y)
         i_theta = self.penalised_loss(y, theta_y)
         return i_theta
 
@@ -103,11 +117,12 @@ if __name__ == '__main__':
     p = 3
     drift = 0.
     volatility = 0.20
-    strike = 1.
+    strike_long = 1.
+    strike_short = 1.2
     maturity = 0.08
     net_width = 20
     net_depth = 4
-    mc_samples = 2**15
+    mc_samples = 2**16
     learning_rate = 0.001
     epochs = 1100
     rolling_window = 100
@@ -118,7 +133,8 @@ if __name__ == '__main__':
 
     # writing summary
     dump_summary = open(os.path.join(plot_fold, "summary.txt"), 'w')
-    dump_summary.write(f'\norder: {p}, strike level: {strike}, drift: {drift}, volatility: {volatility}'
+    dump_summary.write(f'\norder: {p}, strike lower: {strike_long}, strike upper: {strike_short},'
+                       f'\ndrift: {drift}, volatility: {volatility}'
                        f'\nmaturity: {maturity}')
     dump_summary.write(f'\nneural network depth: {net_depth}\nneural network width: {net_width}'
                        f'\nmc saples: {mc_samples}\nlearning rate: {learning_rate}\nepochs: {epochs}'
@@ -134,18 +150,20 @@ if __name__ == '__main__':
     start = time.time()
 
     # initialization of loss function, baseline model, and penalisation function
-    loss = cf.CallPayoff(strike)
+    loss = cf.BullSpread(strike_long, strike_short)
+    def log_loss(x):
+        return loss.cost(torch.exp(x))
     mu = torch.distributions.normal.Normal(drift, volatility)
-    penalty = pnl.PolyPenaltyTensor(3) #TODO: change the penalty
+    penalty = pnl.InfinitePenalty(volatility * volatility)
 
     # computing the option fair value via Black&Scholes formula
-    fv = blackscholes_option(S=1., K=strike, T=maturity, r=0., q=0., sigma=volatility)
+    fv = bull_call_spread(S=1., K_long=strike_long, K_short=strike_short, T=maturity, r=0., q=0., sigma=volatility)
 
     # computing the upper fair value bound at the uncertainty level h via nn optimization
 
     print("starting neural network optimization...")
     #initializing the neural network
-    i_theta_mart = IThetaMart(func=loss.cost, penalty=penalty.evaluate, p=p, mu=mu,
+    i_theta_mart = IThetaMart(func=log_loss, penalty=penalty.evaluate, p=p, mu=mu,
                      h=maturity, width=net_width, depth=net_depth,
                      nr_sample=mc_samples)
     optm = torch.optim.Adam(i_theta_mart.parameters(), lr=learning_rate)
