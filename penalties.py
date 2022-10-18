@@ -49,5 +49,23 @@ class InfinitePenalty(Penalty):
 
     def evaluate(self, x):
         if x > self.level:
-            return torch.tensor(float('inf'))
+            return torch.tensor(float('Inf'))
         return torch.tensor(0.)
+
+
+class PowerGrowthPenalty(Penalty):
+
+    def __init__(self, scaling, steepness, denominator=1):
+        super().__init__()
+        if scaling <= 0:
+            raise Exception(f'Scaling must be bigger than 0')
+        if steepness <= 1:
+            raise Exception(f'Power growth must be bigger than 1')
+        self.penal_type = 'power growth penalty'
+        self.scaling = torch.tensor(scaling)
+        self.steepness = torch.tensor(steepness)
+        self.denominator = torch.tensor(denominator)
+
+    def evaluate(self, x):
+        cost = torch.pow(self.scaling * x, self.steepness) / self.denominator
+        return cost
