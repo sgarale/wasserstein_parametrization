@@ -1,5 +1,6 @@
 import numpy as np
 import torch
+from matplotlib import pyplot as plt
 
 
 class Penalty:
@@ -37,35 +38,23 @@ class PolyPenaltyTensor(PolyPenalty):
         return torch.pow(x, self.p)
 
 
-
-class InfinitePenalty(Penalty):
-
-    def __init__(self, level):
-        super().__init__()
-        if level <= 0:
-            raise Exception(f'Infinite penalty level must be positive. Passed {level:.4f}')
-        self.penal_type = 'Infinite penalty'
-        self.level = level
-
-    def evaluate(self, x):
-        if x > self.level:
-            return torch.tensor(float('Inf'))
-        return torch.tensor(0.)
-
-
 class PowerGrowthPenalty(Penalty):
 
-    def __init__(self, scaling, steepness, denominator=1):
+    def __init__(self, sigma, n):
         super().__init__()
-        if scaling <= 0:
-            raise Exception(f'Scaling must be bigger than 0')
-        if steepness <= 1:
-            raise Exception(f'Power growth must be bigger than 1')
-        self.penal_type = 'power growth penalty'
-        self.scaling = torch.tensor(scaling)
-        self.steepness = torch.tensor(steepness)
-        self.denominator = torch.tensor(denominator)
+        self.penal_type = 'Polynomial growth penalty'
+        self.sigma = torch.tensor(sigma)
+        self.sigma2 = torch.tensor(sigma * sigma)
+        self.n = torch.tensor(n)
 
     def evaluate(self, x):
-        cost = torch.pow(self.scaling * x, self.steepness) / self.denominator
-        return cost
+        return torch.pow(x / self.sigma2, self.n) / self.n
+
+# if __name__=='__main__':
+#     torch.set_default_dtype(torch.float64)
+#     penalty = PowerGrowthPenalty(0.2, 100)
+#     x = np.arange(0.0005, 0.0415, 0.0005)
+#     y = penalty.evaluate(torch.tensor(x))
+#     plt.plot(x, y, label="exponential penalty")
+#     plt.legend()
+#     plt.show()
