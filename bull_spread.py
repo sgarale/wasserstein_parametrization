@@ -90,7 +90,7 @@ class PenalisedLossMart(nn.Module):
         s = self.randomizer.sample(y.shape)
         integral = torch.mean(self.func(y + s * theta_y))
         Lp_norm_theta = torch.pow(torch.mean(torch.pow(torch.abs(theta_y), self.p)), 1./self.p)
-        penal_term = self.h * self.penalty(torch.pow(self.cp * Lp_norm_theta, 2) / self.h)
+        penal_term = self.h * self.penalty.evaluate(torch.pow(self.cp * Lp_norm_theta, 2) / self.h)
         return self.sign * (integral + self.sign * penal_term)
 
 
@@ -100,10 +100,11 @@ class IThetaMart(nn.Module):
     def __init__(self, func, penalty, p, mu, h, width, depth, nr_sample, sup=True):
         super(IThetaMart, self).__init__()
         self.theta = MartReLUNetwork(width, depth)
-        self.mult_coeff = nn.Parameter(torch.tensor(.1))
+        # self.mult_coeff = nn.Parameter(torch.tensor(.1))
         self.penalised_loss = PenalisedLossMart(func=func, penalty=penalty, p=p, h=h, sup=sup)
         self.mu = mu
         self.nr_sample = nr_sample
+        self.scale_norm()
 
     def forward(self):
         y = self.mu.sample([self.nr_sample, 1])
@@ -111,23 +112,36 @@ class IThetaMart(nn.Module):
         i_theta = self.penalised_loss(y, theta_y)
         return i_theta
 
+    def scale_norm(self):
+        """
+        Rescales the norm of the function after the random initialization in order to force it
+        inside the interval (0, sigma / c_p). This avoids numerical problems in case the starting distribution
+        is in a region where the penalization is too large.
+        """
+        y = self.mu.sample([self.nr_sample, 1])
+        theta_y = self.theta(y)
+        Lp_norm_theta = torch.pow(torch.mean(torch.pow(torch.abs(theta_y), self.penalised_loss.p)), 1. / self.penalised_loss.p)
+        m = torch.distributions.uniform.Uniform(torch.sqrt(self.penalised_loss.h) * self.penalised_loss.penalty.sigma / (5 * self.penalised_loss.cp * Lp_norm_theta),
+                        torch.sqrt(self.penalised_loss.h) * self.penalised_loss.penalty.sigma / (self.penalised_loss.cp * Lp_norm_theta))
+        self.mult_coeff = nn.Parameter(m.sample())
+
 
 if __name__ == '__main__':
 
     torch.set_default_dtype(torch.float64)
     # ---------------------- Inputs ----------------------
-    plot_fold = 'bull_spread_0.08'
-    eval_type = 'neural_network'  # choose among ['neural_network','one_dimensional','both']
+    plot_fold = 'bull_spread_1month_2^18'
     p = 3
     drift = 0.
     volatility = 0.20
-    penalty_power_growth = 200
+    penalty_power_growth = 5
     strike_long = 1.
     strike_short = 1.2
-    maturities = torch.arange(10, 15) / 365.2425
+    T0 = 1.
+    maturities = torch.arange(3, 33, 3) / 365.2425
     net_width = 20
     net_depth = 4
-    mc_samples = 2**14
+    mc_samples = 2**18
     learning_rate = 0.001
     epochs = 1100
     rolling_window = 100
@@ -140,7 +154,7 @@ if __name__ == '__main__':
     dump_summary = open(os.path.join(plot_fold, "summary.txt"), 'w')
     dump_summary.write(f'Order: {p}, strike lower: {strike_long}, strike upper: {strike_short},'
                        f'\ndrift: {drift}, volatility: {volatility}'
-                       f'\nmaturities: {maturities.tolist()}'
+                       f'\nmaturities: {(torch.tensor(T0) + maturities).tolist()}'
                        f'\npower growth of the penalty function: {penalty_power_growth}')
     dump_summary.write(f'\nneural network depth: {net_depth}\nneural network width: {net_width}'
                        f'\nmc saples: {mc_samples}\nlearning rate: {learning_rate}\nepochs: {epochs}'
@@ -159,26 +173,33 @@ if __name__ == '__main__':
     loss = cf.BullSpread(strike_long, strike_short)
     def log_loss(x):
         return loss.cost(torch.exp(x))
-    mu = torch.distributions.normal.Normal(drift, volatility)
+    mu = torch.distributions.normal.Normal((drift - volatility * volatility / 2) * T0, volatility * math.sqrt(T0))
     penalty = pnl.PowerGrowthPenalty(sigma=volatility, n=penalty_power_growth)
 
     # computing the option fair value via Black&Scholes formula
-    fv = bull_call_spread(S=1., K_long=strike_long, K_short=strike_short, T=1, r=0., q=0., sigma=volatility)
-    print(f'Fair value at time T=1: {fv:.4f}')
+    fv = bull_call_spread(S=1., K_long=strike_long, K_short=strike_short, T=T0, r=0., q=0., sigma=volatility)
+    print(f'Fair value at time T={T0:.4f}: {fv:.4f}')
     dump_summary.write(f'\n\nFair value at time T=1: {fv:.4f}')
 
-    upper_vector = []
-    lower_vector = []
+    expected_vector = [fv]
+    upper_vector = [fv]
+    lower_vector = [fv]
 
     for h in maturities:
 
-        print(f'Maturity: {h:.4f}')
-        dump_summary.write(f'\n\nMaturity: {1+h:.4f}')
+        print(f'Maturity: {T0 + h:.4f}')
+        dump_summary.write(f'\n\nMaturity: {T0+h:.4f}')
+
+        # computing the option fair value via Black&Scholes formula
+        fv = bull_call_spread(S=1., K_long=strike_long, K_short=strike_short, T=T0 + h, r=0., q=0., sigma=volatility)
+        print(f'Fair value at time T={T0 + h:.4f}: {fv:.4f}')
+        dump_summary.write(f'\n\nFair value at time T={T0 + h:.4f}: {fv:.4f}')
+        expected_vector.append(float(fv))
 
         # computing the upper fair value bound at the uncertainty level h via nn optimization
         print("starting neural network optimization for the upper bound...")
         #initializing the neural network
-        i_theta_mart = IThetaMart(func=log_loss, penalty=penalty.evaluate, p=p, mu=mu,
+        i_theta_mart = IThetaMart(func=log_loss, penalty=penalty, p=p, mu=mu,
                          h=h, width=net_width, depth=net_depth,
                          nr_sample=mc_samples)
 
@@ -194,12 +215,12 @@ if __name__ == '__main__':
 
         # plotting the training phase
         plt.plot(np.arange(1, out_vector.shape[0] + 1), out_vector, label='neural network upper model')
-        # plt.plot(np.arange(1, out_vector.shape[0] + 1), np.repeat(fv, epochs),
-        #          label='reference model')
+        plt.plot(np.arange(1, out_vector.shape[0] + 1), np.repeat(fv, epochs),
+                 label='reference model')
         plt.xlabel("Epochs")
         plt.ylabel("Fair value")
         plt.legend()
-        plt.savefig(f"{plot_fold}/training_nn_maturity_{h:.3f}.png", bbox_inches='tight')
+        plt.savefig(f"{plot_fold}/training_nn_upper_maturity_{T0 + h:.3f}.png", bbox_inches='tight')
         plt.clf()
 
         print(f"neural network optimization for the upper bound ended")
@@ -207,7 +228,7 @@ if __name__ == '__main__':
         # computing the lower fair value bound at the uncertainty level h via nn optimization
         print("starting neural network optimization for the lower bound...")
         # initializing the neural network
-        i_theta_mart = IThetaMart(func=log_loss, penalty=penalty.evaluate, p=p, mu=mu,
+        i_theta_mart = IThetaMart(func=log_loss, penalty=penalty, p=p, mu=mu,
                                   h=h, width=net_width, depth=net_depth,
                                   nr_sample=mc_samples, sup=False)
 
@@ -229,19 +250,25 @@ if __name__ == '__main__':
         plt.xlabel("Epochs")
         plt.ylabel("Fair value")
         plt.legend()
-        plt.savefig(f"{plot_fold}/training_nn_lower_maturity_{h:.3f}.png", bbox_inches='tight')
+        plt.savefig(f"{plot_fold}/training_nn_lower_maturity_{T0 + h:.3f}.png", bbox_inches='tight')
         plt.clf()
 
         print(f"neural network optimization for lower bound ended")
 
+    maturities = torch.tensor(T0) + maturities
+    maturities = torch.concat([torch.tensor([T0]), maturities])
     plt.plot(maturities, upper_vector, label='Upper level')
     plt.plot(maturities, lower_vector, label='Lower level')
-    plt.plot(maturities, np.repeat(fv, len(lower_vector)), label='Fair Value at T=1')
+    plt.plot(maturities, expected_vector, label='B&S fair value')
     plt.xlabel('Maturity')
     plt.ylabel('Fair value')
     plt.legend()
     plt.savefig(f"{plot_fold}/option_levels.png", bbox_inches='tight')
     plt.clf()
+
+    dump_summary.write(f'\n\nB&S prices: {expected_vector}')
+    dump_summary.write(f'\nUpper prices: {upper_vector}')
+    dump_summary.write(f'\nLower prices: {lower_vector}')
     # # Drawing the vector field theta
     # x = np.arange(-1.7, 1.85, 0.15)
     # y = np.arange(-1.7, 1.85, 0.15)
