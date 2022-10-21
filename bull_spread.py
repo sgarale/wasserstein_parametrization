@@ -147,7 +147,7 @@ if __name__ == '__main__':
     rolling_window = 100
     # ----------------------------------------------------
 
-    plot_fold = f"plots/{plot_fold}"
+    plot_fold = os.path.join('plots', plot_fold)
     gauss.check_dir(plot_fold)
 
     # writing summary
@@ -220,7 +220,7 @@ if __name__ == '__main__':
         plt.xlabel("Epochs")
         plt.ylabel("Fair value")
         plt.legend()
-        plt.savefig(f"{plot_fold}/training_nn_upper_maturity_{T0 + h:.3f}.png", bbox_inches='tight')
+        plt.savefig(os.path.join(plot_fold, f'training_nn_upper_maturity_{T0 + h:.3f}.png'), bbox_inches='tight')
         plt.clf()
 
         print(f"neural network optimization for the upper bound ended")
@@ -250,7 +250,7 @@ if __name__ == '__main__':
         plt.xlabel("Epochs")
         plt.ylabel("Fair value")
         plt.legend()
-        plt.savefig(f"{plot_fold}/training_nn_lower_maturity_{T0 + h:.3f}.png", bbox_inches='tight')
+        plt.savefig(os.path.join(plot_fold,f"training_nn_lower_maturity_{T0 + h:.3f}.png"), bbox_inches='tight')
         plt.clf()
 
         print(f"neural network optimization for lower bound ended")
@@ -263,37 +263,9 @@ if __name__ == '__main__':
     plt.xlabel('Maturity')
     plt.ylabel('Fair value')
     plt.legend()
-    plt.savefig(f"{plot_fold}/option_levels.png", bbox_inches='tight')
+    plt.savefig(os.path.join(plot_fold,'option_levels.png'), bbox_inches='tight')
     plt.clf()
 
     dump_summary.write(f'\n\nB&S prices: {expected_vector}')
     dump_summary.write(f'\nUpper prices: {upper_vector}')
     dump_summary.write(f'\nLower prices: {lower_vector}')
-    # # Drawing the vector field theta
-    # x = np.arange(-1.7, 1.85, 0.15)
-    # y = np.arange(-1.7, 1.85, 0.15)
-    # xv, yv = np.meshgrid(x, y)
-    # theta = i_theta_mart.theta(torch.stack([torch.from_numpy(xv), torch.from_numpy(yv)], dim=2)).detach().numpy()
-    #
-    # # plotting the loss function
-    # xloss = np.arange(-1.7, 1.71, 0.01)
-    # yloss = loss.cost(torch.from_numpy(xloss))
-    #
-    # # Depict illustration
-    # fig, ax = plt.subplots()
-    # ax.set_aspect('equal')
-    # CS = ax.contour(xlossv, ylossv, zloss, cmap='viridis', levels=7)
-    # ax.clabel(CS, inline=True, fontsize=10)
-    # ax.quiver(xv, yv, theta[:, :, 0], theta[:, :, 1], color='g')
-    # # plt.streamplot(xv, yv, theta[:, :, 0], theta[:, :, 1], density=1.4, linewidth=None, color='#A23BEC')
-    # ax.plot(epicenter[0], epicenter[1], 'rh')
-    # # plt.title(f'Parametric optimizer for uncertainty level h={uncertainty_level}')
-    # plt.savefig(f"{plot_fold}/nn_optimizer_level_{uncertainty_level:.5f}.png", bbox_inches='tight')
-    #
-    # print(f"elaboration time: {time.time() - start:.2f} seconds")
-
-    # # let's see the parameters of the model
-    # print("-----------------------------------------------")
-    # for name, param in i_theta.named_parameters():
-    #     print(f"Layer: {name} | Size: {param.size()} | Values : {param} \n")
-    # print("-----------------------------------------------")
