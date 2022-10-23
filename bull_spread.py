@@ -79,18 +79,15 @@ class PenalisedLossMart(nn.Module):
         self.func = func
         self.penalty = penalty
         self.p = p
-        self.cp = torch.tensor(math.sqrt(2) * (math.gamma((p + 1) / 2.) / math.sqrt(math.pi)) ** (1. / p))
-        self.randomizer = torch.distributions.normal.Normal(0., 1.)
         self.h = h
         self.sign = torch.tensor(1)
         if sup:
             self.sign = torch.tensor(-1)
 
     def forward(self, y, theta_y):
-        s = self.randomizer.sample(y.shape)
-        integral = torch.mean(self.func(y + s * theta_y))
+        integral = torch.mean((self.func(y + theta_y) + self.func(y - theta_y)) / 2)
         Lp_norm_theta = torch.pow(torch.mean(torch.pow(torch.abs(theta_y), self.p)), 1./self.p)
-        penal_term = self.h * self.penalty.evaluate(torch.pow(self.cp * Lp_norm_theta, 2) / self.h)
+        penal_term = self.h * self.penalty.evaluate(torch.pow(Lp_norm_theta, 2) / self.h)
         return self.sign * (integral + self.sign * penal_term)
 
 
@@ -100,7 +97,7 @@ class IThetaMart(nn.Module):
     def __init__(self, func, penalty, p, mu, h, width, depth, nr_sample, sup=True):
         super(IThetaMart, self).__init__()
         self.theta = MartReLUNetwork(width, depth)
-        # self.mult_coeff = nn.Parameter(torch.tensor(.1))
+        self.mult_coeff = None
         self.penalised_loss = PenalisedLossMart(func=func, penalty=penalty, p=p, h=h, sup=sup)
         self.mu = mu
         self.nr_sample = nr_sample
@@ -115,14 +112,14 @@ class IThetaMart(nn.Module):
     def scale_norm(self):
         """
         Rescales the norm of the function after the random initialization in order to force it
-        inside the interval (0, sigma / c_p). This avoids numerical problems in case the starting distribution
+        inside the interval (0, sigma). This avoids numerical problems in case the starting distribution
         is in a region where the penalization is too large.
         """
         y = self.mu.sample([self.nr_sample, 1])
         theta_y = self.theta(y)
         Lp_norm_theta = torch.pow(torch.mean(torch.pow(torch.abs(theta_y), self.penalised_loss.p)), 1. / self.penalised_loss.p)
-        m = torch.distributions.uniform.Uniform(torch.sqrt(self.penalised_loss.h) * self.penalised_loss.penalty.sigma / (5 * self.penalised_loss.cp * Lp_norm_theta),
-                        torch.sqrt(self.penalised_loss.h) * self.penalised_loss.penalty.sigma / (self.penalised_loss.cp * Lp_norm_theta))
+        m = torch.distributions.uniform.Uniform(torch.sqrt(self.penalised_loss.h) * self.penalised_loss.penalty.sigma / (5 * Lp_norm_theta),
+                        torch.sqrt(self.penalised_loss.h) * self.penalised_loss.penalty.sigma / Lp_norm_theta)
         self.mult_coeff = nn.Parameter(m.sample())
 
 
@@ -130,7 +127,7 @@ if __name__ == '__main__':
 
     torch.set_default_dtype(torch.float64)
     # ---------------------- Inputs ----------------------
-    plot_fold = 'bull_spread_1month_2^18'
+    plot_fold = 'bull_spread_1month_2^19'
     p = 3
     drift = 0.
     volatility = 0.20
@@ -141,7 +138,7 @@ if __name__ == '__main__':
     maturities = torch.arange(3, 33, 3) / 365.2425
     net_width = 20
     net_depth = 4
-    mc_samples = 2**18
+    mc_samples = 2**19
     learning_rate = 0.001
     epochs = 1100
     rolling_window = 100
@@ -269,3 +266,5 @@ if __name__ == '__main__':
     dump_summary.write(f'\n\nB&S prices: {expected_vector}')
     dump_summary.write(f'\nUpper prices: {upper_vector}')
     dump_summary.write(f'\nLower prices: {lower_vector}')
+
+    print(f'\nTotal time for the evaluation: {(time.time() - start)/60.:.2f} m')
