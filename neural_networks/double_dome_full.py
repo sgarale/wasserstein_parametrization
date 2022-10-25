@@ -4,19 +4,21 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import torch
-from torch import nn
-from scipy.stats import multivariate_normal
-from scipy import optimize, integrate
 import cost_functions as cf
 import penalties as pnl
-import gaussian_full as gauss
+import utils as ut
+import neural_networks.nn_utils as nnutils
 
 
 if __name__ == '__main__':
 
+    # This main performs the neural network optimization to compute the functional I_Theta with gaussian
+    # reference measure and double dome loss function at a specific uncertainty level (uncertainty_level)
+    # it is used to obtain the plots of Section 4.4
+
     torch.set_default_dtype(torch.float64)
     # ---------------------- Inputs ----------------------
-    plot_fold = 'double_dome_0.5'
+    plot_fold = 'double_dome'
     eval_type = 'both'  # choose among ['neural_network','one_dimensional','both']
     city_centers = [[0., 0.], [1.25, 0.]]
     cost_level_1 = 0.5
@@ -28,22 +30,21 @@ if __name__ == '__main__':
     uncertainty_level = 0.5
     net_width = 20
     net_depth = 4
-    mc_samples = 2**15
-    mc_samples_1d = 2**16
+    mc_samples = 2**11 #2**15
+    mc_samples_1d = 2**10 #2**16
     learning_rate = 0.001
     learning_rate_1d = 0.001
     epochs = 1100
     rolling_window = 100
     epochs_1d = epochs
-    manual_loss = None
     # ----------------------------------------------------
 
-    plot_fold = f"plots/{plot_fold}"
-    gauss.check_dir(plot_fold)
+    plot_fold = os.path.join("plots", plot_fold)
+    ut.check_dir(plot_fold)
 
     # writing summary
     dump_summary = open(os.path.join(plot_fold, "summary.txt"), 'w')
-    dump_summary.write(f'\ncity center 1: {city_centers[0]}, cost level 1: {cost_level_1}, radius 1: {radius_1}'
+    dump_summary.write(f'city center 1: {city_centers[0]}, cost level 1: {cost_level_1}, radius 1: {radius_1}'
                        f'\ncity center 2: {city_centers[1]}, cost level 2: {cost_level_2}, radius 2: {radius_2}'
                        f'\nepicenter earthquake: {epicenter}, variance: {variance}')
     dump_summary.write(f'\nuncertainty level: {uncertainty_level}')
@@ -85,23 +86,23 @@ if __name__ == '__main__':
 
         print("starting one dimensional optimization...")
         # initializing the one dimensional neural network
-        i_theta_1d = gauss.ITheta_1d(func= loss.cost, grad=loss.gradient, penalty=penalty.evaluate, mu=mu,
+        i_theta_1d = nnutils.ITheta_1d(func= loss.cost, grad=loss.gradient, penalty=penalty.evaluate, mu=mu,
                                h=uncertainty_level, nr_sample=mc_samples_1d)
         optm = torch.optim.Adam(i_theta_1d.parameters(), lr=learning_rate_1d)
         ws_loss_1d = []
         for i in range(epochs_1d):
-            ws_loss = gauss.train(i_theta_1d, optm)
+            ws_loss = nnutils.train(i_theta_1d, optm)
             ws_loss_1d.append(-float(ws_loss))
         ws_loss_1d = pd.Series(ws_loss_1d).rolling(rolling_window).mean()
 
         print(f"Asymptotic worst case loss: {ws_loss_1d[ws_loss_1d.shape[0]-1]:.6f}")
-        dump_summary.write(f'\nWorst case loss through asymptitc optimizer: {ws_loss_1d[ws_loss_1d.shape[0]-1]:.8f}')
+        dump_summary.write(f'\nWorst case loss through asymptotic optimizer: {ws_loss_1d[ws_loss_1d.shape[0]-1]:.8f}')
         for name, param in i_theta_1d.named_parameters():
             print(f"Asymptotic optimizer theta: {param:.8f}")
 
         # plotting the training phase for the 1d optimization
         plt.plot(np.arange(1, epochs_1d + 1), ws_loss_1d, label='asymptotic optimizer')
-        plt.savefig(f"{plot_fold}/training_1d_level_{uncertainty_level:.5f}.png", bbox_inches='tight')
+        plt.savefig(os.path.join(plot_fold, f"training_1d_level_{uncertainty_level:.5f}.png"), bbox_inches='tight')
         plt.clf()
 
         print("One dimensional optimization ended")
@@ -111,13 +112,13 @@ if __name__ == '__main__':
 
         print("starting neural network optimization...")
         #initializing the neural network
-        i_theta = gauss.ITheta(func=loss.cost, penalty=penalty.evaluate, mu=mu,
+        i_theta = nnutils.ITheta(func=loss.cost, penalty=penalty.evaluate, mu=mu,
                          h=uncertainty_level, width=net_width, depth=net_depth,
                          nr_sample=mc_samples)
         optm = torch.optim.Adam(i_theta.parameters(), lr=learning_rate)
         out_vector = []
         for i in range(epochs):
-            out = gauss.train(i_theta, optm)
+            out = nnutils.train(i_theta, optm)
             out_vector.append(-float(out))
         out_vector = pd.Series(out_vector).rolling(rolling_window).mean()
 
@@ -127,15 +128,11 @@ if __name__ == '__main__':
         # plotting the training phase
         plt.plot(np.arange(1, out_vector.shape[0] + 1), out_vector, label='neural network optimizer')
         if eval_type in ['both', 'one_dimensional']:
-            if manual_loss:
-                plt.plot(np.arange(1, out_vector.shape[0] + 1), np.repeat(manual_loss, epochs),
-                         label='asymptotic optimizer')
-            else:
-                plt.plot(np.arange(1, out_vector.shape[0] + 1), np.repeat(ws_loss_1d[ws_loss_1d.shape[0] - 1], epochs), label='asymptotic optimizer')
+            plt.plot(np.arange(1, out_vector.shape[0] + 1), np.repeat(ws_loss_1d[ws_loss_1d.shape[0] - 1], epochs), label='asymptotic optimizer')
         plt.xlabel("Epochs")
         plt.ylabel("Worst case loss")
         plt.legend()
-        plt.savefig(f"{plot_fold}/training_nn_level_{uncertainty_level:.5f}.png", bbox_inches='tight')
+        plt.savefig(os.path.join(plot_fold, f"training_nn_level_{uncertainty_level:.5f}.png"), bbox_inches='tight')
         plt.clf()
 
         print("neural network optimization ended")
@@ -158,15 +155,7 @@ if __name__ == '__main__':
         CS = ax.contour(xlossv, ylossv, zloss, cmap='viridis', levels=7)
         ax.clabel(CS, inline=True, fontsize=10)
         ax.quiver(xv, yv, theta[:, :, 0], theta[:, :, 1], color='g')
-        # plt.streamplot(xv, yv, theta[:, :, 0], theta[:, :, 1], density=1.4, linewidth=None, color='#A23BEC')
         ax.plot(epicenter[0], epicenter[1], 'rh')
-        # plt.title(f'Parametric optimizer for uncertainty level h={uncertainty_level}')
-        plt.savefig(f"{plot_fold}/nn_optimizer_level_{uncertainty_level:.5f}.png", bbox_inches='tight')
+        plt.savefig(os.path.join(plot_fold, f"nn_optimizer_level_{uncertainty_level:.5f}.png"), bbox_inches='tight')
 
         print(f"elaboration time: {time.time() - start:.2f} seconds")
-
-        # # let's see the parameters of the model
-        # print("-----------------------------------------------")
-        # for name, param in i_theta.named_parameters():
-        #     print(f"Layer: {name} | Size: {param.size()} | Values : {param} \n")
-        # print("-----------------------------------------------")

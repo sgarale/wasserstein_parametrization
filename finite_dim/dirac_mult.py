@@ -1,16 +1,20 @@
-import math
 import os
 import numpy as np
 from matplotlib import pyplot as plt
 from scipy.optimize import minimize
 import cost_functions as cf
+import penalties
+import utils as ut
 
 
 class Dirac2dMult:
+    """
+    Class implementing a measure given by a convex sum of Dirac measures
+    """
 
     def __init__(self, atoms, weights=None):
         """
-        :param atoms: list of list or numpy ndarray
+        :param atoms: list of lists or numpy ndarrays
         :param weights: list or numpy ndarray
         """
         self.atoms_x = np.array(atoms)[:, 0]
@@ -22,9 +26,9 @@ class Dirac2dMult:
         if np.sum(self.weights) != 1.:
             raise Exception("Not a probability measure, check the weights.")
 
-    def integrate(self, f, theta=np.array([[0,0]]), power=1):
+    def integrate(self, f, theta=np.array([[0, 0]]), power=1):
         """
-        Integrate against the weighted dirac measure.
+        Integrate under the measure mu_theta.
         :param f: function
         :param theta: numpy ndarray
         :return: float
@@ -33,38 +37,17 @@ class Dirac2dMult:
 
 
 def wass2_mult(dirac: Dirac2dMult, theta):
-        """
-        It computes the Wasserstein distance of order 2 between the measure mu and the measure mu_theta, where mu is a
-        convex sum of dirac measure.
-        :param dirac: Dirac2d
-        :param theta: numpy ndarray
-        :return: float
-        """
-        return np.sqrt((dirac.weights * np.power(theta, 2).sum(axis=1)).sum())
+    """
+    Computes the Wasserstein distance of order 2 between the measure mu and the measure mu_theta, where mu is a
+    convex sum of Dirac measures.
+    :param dirac: Dirac2dMult
+    :param theta: numpy ndarray
+    :return: float
+    """
+    return np.sqrt((dirac.weights * np.power(theta, 2).sum(axis=1)).sum())
 
 
-class Penalty:
-
-    def __init__(self):
-        self.penal_type = None
-
-
-class PolyPenalty(Penalty):
-
-    def __init__(self, p):
-        super().__init__()
-        if p <= 1:
-            raise Exception(f"Polynomial penalty function is defined only for powers greater than 1. Passed {p: .4f} instead.")
-        self.penal_type = "Polynomial penalty"
-        self.p = p
-
-    def evaluate(self, x):
-        if x < 0:
-            raise Exception(f"Penalty function is defined only for positive numbers. Passed {x: .4f} instead.")
-        return np.power(x, self.p)
-
-
-def loss_mult(theta, h, distr, cost, penalty: Penalty):
+def loss_mult(theta, h, distr, cost, penalty: penalties.Penalty):
     """
     Compute the loss function for the optimization.
     :param h: float
@@ -72,34 +55,34 @@ def loss_mult(theta, h, distr, cost, penalty: Penalty):
     :param cost: function of two variables
     :param penalty: Penalty
     :param theta: numpy ndarray (shape = d*2)
-    :return:
+    :return: float
     """
     return - (distr.integrate(f=cost, theta=theta.reshape(-1, 2)) - h * penalty.evaluate(wass2_mult(distr, theta=theta.reshape(-1, 2)) / h))
 
-
-def check_dir(directory):
-    if not os.path.exists(directory):
-        os.makedirs(directory)
 
 
 if __name__=='__main__':
 
     # ---- Plots subfolder --------
-    plot_fold = 'triple_epicenter_v2'
-    # -----------------------------
-    plot_fold = f"plots/{plot_fold}"
-    check_dir(plot_fold)
-
-
+    plot_fold = 'triple_epicenter'
+    # ---------- INPUTS -----------------
     city_center = [0., 0.]
     cost_level = 1.
+    radius = 1.5
     epicenter_1 = [0.55, 0.]
     epicenter_2 = [0., .85]
     epicenter_3 = [-1.10, 0.]
+    weights = [1./3, 1./3, 1./3]
+    h_levels = np.arange(0.015, 0.315, 0.015)
+    # -----------------------------------
 
-    mu = Dirac2dMult([epicenter_1, epicenter_2, epicenter_3], [1./3, 1./3, 1./3])
-    penalty = PolyPenalty(2)
-    gaussian_cost = cf.GaussianKernelCost2D(x_0=city_center[0], y_0=city_center[1], level=cost_level, radius=1.5)
+    plot_fold = os.path.join('plots', plot_fold)
+    ut.check_dir(plot_fold)
+
+    # Initializing measure, penalty, and loss function
+    mu = Dirac2dMult([epicenter_1, epicenter_2, epicenter_3], weights)
+    penalty = penalties.PolyPenalty(2)
+    gaussian_cost = cf.GaussianKernelCost2D(x_0=city_center[0], y_0=city_center[1], level=cost_level, radius=radius)
 
     # Contour plot of the cost function
     x = np.arange(-1.7, 1.71, 0.01)
@@ -109,19 +92,19 @@ if __name__=='__main__':
 
     fig, ax = plt.subplots()
     ax.set_aspect('equal')
-    # ax.margins(tight=True)
     CS = ax.contour(xv, yv, zv, cmap='viridis', levels=7)
     ax.clabel(CS, inline=True, fontsize=10)
     ax.plot(epicenter_1[0], epicenter_1[1], 'r.')
     ax.plot(epicenter_2[0], epicenter_2[1], 'g.')
     ax.plot(epicenter_3[0], epicenter_3[1], 'b.')
-    plt.savefig(f"{plot_fold}/loss_and_apriori.png", bbox_inches='tight')
+    plt.savefig(os.path.join(plot_fold, 'loss_and_apriori.png'), bbox_inches='tight')
 
-    print(f"Expected value: {mu.integrate(gaussian_cost.cost) : .4f}")
+    print(f"Expected loss: {mu.integrate(gaussian_cost.cost) :.4f}")
 
-    x0 = np.array([0, 0, 0, 0, 0, 0])
 
-    h_levels = np.arange(0.015, 0.315, 0.015)
+    # Optimization cycle
+    x0 = np.array([0, 0, 0, 0, 0, 0]) # initial guess for the optimization
+
     I_theta = [mu.integrate(gaussian_cost.cost)]
     print("Directions of the minimization           loss")
     for h in h_levels:
@@ -129,7 +112,7 @@ if __name__=='__main__':
         ax.plot(epicenter_1[0] + res.x[0], epicenter_1[1] + res.x[1], 'r.')
         ax.plot(epicenter_2[0] + res.x[2], epicenter_2[1] + res.x[3], 'g.')
         ax.plot(epicenter_3[0] + res.x[4], epicenter_3[1] + res.x[5], 'b.')
-        plt.savefig(f"{plot_fold}/optimizers_unc_{h:0.2f}.png", bbox_inches='tight')
+        plt.savefig(os.path.join(plot_fold, f'optimizers_unc_{h:0.2f}.png'), bbox_inches='tight')
         loss_tmp = - loss_mult(res.x, h, mu, gaussian_cost.cost, penalty)
         I_theta.append(loss_tmp)
         print(f"uncertainty level: {h : .2f}, directions of optimization: {res.x[0] : .4f}, {res.x[1] : .4f}, "
@@ -140,5 +123,5 @@ if __name__=='__main__':
     plt.plot(np.concatenate([[0],h_levels]), I_theta)
     plt.xlabel("Uncertainty level")
     plt.ylabel("Worst case loss")
-    plt.savefig(f"{plot_fold}/worst_case_loss.png", bbox_inches='tight')
+    plt.savefig(os.path.join(plot_fold, f'worst_case_loss.png'), bbox_inches='tight')
     plt.show()

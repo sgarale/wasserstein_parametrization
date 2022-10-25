@@ -6,19 +6,19 @@ import numpy as np
 import pandas as pd
 from scipy.stats import norm
 import torch
-from torch import nn
 import cost_functions as cf
 import penalties as pnl
-import gaussian_full as gauss
+import utils as ut
+import neural_networks.nn_utils as nnutils
 
 
 def blackscholes_option(S, K, T, r, q, sigma, flag='Call'):
     """
-    Computes the analytical price of call and put option using the GBM model (Black-Scholes formula).
+    Computes the analytical price of call (or put) option using the GBM model (Black-Scholes formula).
     :param S: float, initial level of the asset
     :param K: float, strike level
     :param T: float, maturity
-    :param r: float, zero coupon risk free rate
+    :param r: float, zero coupon risk-free rate
     :param q: float, dividend rate
     :param sigma: float, volatility
     :param flag: str, available choices: "Call", "Put"
@@ -45,7 +45,7 @@ def bull_call_spread(S, K_long, K_short, T, r, q, sigma):
     :param K_long: float, strike of the long call option
     :param K_short: float, strike of the short call option
     :param T: float, maturity
-    :param r: float, zero coupon risk free rate
+    :param r: float, zero coupon risk-free rate
     :param q: float, dividend rate
     :param sigma: float, volatility
     :param flag: str, available choices: "Call", "Put"
@@ -54,80 +54,15 @@ def bull_call_spread(S, K_long, K_short, T, r, q, sigma):
     return blackscholes_option(S, K_long, T, r, q, sigma) - blackscholes_option(S, K_short, T, r, q, sigma)
 
 
-class MartReLUNetwork(nn.Module):
-
-    def __init__(self, width, depth=1):
-        super(MartReLUNetwork, self).__init__()
-        self.linear_relu_stack = nn.Sequential(
-            nn.Linear(1, width)
-        )
-        for i in range(depth - 1):
-            self.linear_relu_stack.append(nn.ReLU())
-            self.linear_relu_stack.append(nn.Linear(width, width))
-        self.linear_relu_stack.append(nn.ReLU())
-        self.linear_relu_stack.append(nn.Linear(width, 1))
-
-    def forward(self, x):
-        theta = self.linear_relu_stack(x)
-        return theta
-
-
-class PenalisedLossMart(nn.Module):
-
-    def __init__(self, func, penalty, p, h, sup=True):
-        super(PenalisedLossMart, self).__init__()
-        self.func = func
-        self.penalty = penalty
-        self.p = p
-        self.h = h
-        self.sign = torch.tensor(1)
-        if sup:
-            self.sign = torch.tensor(-1)
-
-    def forward(self, y, theta_y):
-        integral = torch.mean((self.func(y + theta_y) + self.func(y - theta_y)) / 2)
-        Lp_norm_theta = torch.pow(torch.mean(torch.pow(torch.abs(theta_y), self.p)), 1./self.p)
-        penal_term = self.h * self.penalty.evaluate(torch.pow(Lp_norm_theta, 2) / self.h)
-        return self.sign * (integral + self.sign * penal_term)
-
-
-
-class IThetaMart(nn.Module):
-
-    def __init__(self, func, penalty, p, mu, h, width, depth, nr_sample, sup=True):
-        super(IThetaMart, self).__init__()
-        self.theta = MartReLUNetwork(width, depth)
-        self.mult_coeff = None
-        self.penalised_loss = PenalisedLossMart(func=func, penalty=penalty, p=p, h=h, sup=sup)
-        self.mu = mu
-        self.nr_sample = nr_sample
-        self.scale_norm()
-
-    def forward(self):
-        y = self.mu.sample([self.nr_sample, 1])
-        theta_y = self.mult_coeff * self.theta(y)
-        i_theta = self.penalised_loss(y, theta_y)
-        return i_theta
-
-    def scale_norm(self):
-        """
-        Rescales the norm of the function after the random initialization in order to force it
-        inside the interval (0, sigma). This avoids numerical problems in case the starting distribution
-        is in a region where the penalization is too large.
-        """
-        y = self.mu.sample([self.nr_sample, 1])
-        theta_y = self.theta(y)
-        Lp_norm_theta = torch.pow(torch.mean(torch.pow(torch.abs(theta_y), self.penalised_loss.p)), 1. / self.penalised_loss.p)
-        m = torch.distributions.uniform.Uniform(torch.sqrt(self.penalised_loss.h) * self.penalised_loss.penalty.sigma / (5 * Lp_norm_theta),
-                        torch.sqrt(self.penalised_loss.h) * self.penalised_loss.penalty.sigma / Lp_norm_theta)
-        self.mult_coeff = nn.Parameter(m.sample())
-
 
 if __name__ == '__main__':
 
+    # This main performs the neural network optimization to compute robust bounds for the price of a bull call spread
+    # in the martingale constraint setting. It is used to obtain the plot of Section 4.6.
+
     torch.set_default_dtype(torch.float64)
     # ---------------------- Inputs ----------------------
-    plot_fold = 'bull_spread_1month_2^19'
+    plot_fold = 'bull_spread'
     p = 3
     drift = 0.
     volatility = 0.20
@@ -138,14 +73,14 @@ if __name__ == '__main__':
     maturities = torch.arange(3, 33, 3) / 365.2425
     net_width = 20
     net_depth = 4
-    mc_samples = 2**19
+    mc_samples = 2**15
     learning_rate = 0.001
     epochs = 1100
     rolling_window = 100
     # ----------------------------------------------------
 
     plot_fold = os.path.join('plots', plot_fold)
-    gauss.check_dir(plot_fold)
+    ut.check_dir(plot_fold)
 
     # writing summary
     dump_summary = open(os.path.join(plot_fold, "summary.txt"), 'w')
@@ -171,9 +106,9 @@ if __name__ == '__main__':
     def log_loss(x):
         return loss.cost(torch.exp(x))
     mu = torch.distributions.normal.Normal((drift - volatility * volatility / 2) * T0, volatility * math.sqrt(T0))
-    penalty = pnl.PowerGrowthPenalty(sigma=volatility, n=penalty_power_growth)
+    penalty = pnl.RescaledPolyPenalty(sigma=volatility, n=penalty_power_growth)
 
-    # computing the option fair value via Black&Scholes formula
+    # computing the option fair value via Black-Scholes formula
     fv = bull_call_spread(S=1., K_long=strike_long, K_short=strike_short, T=T0, r=0., q=0., sigma=volatility)
     print(f'Fair value at time T={T0:.4f}: {fv:.4f}')
     dump_summary.write(f'\n\nFair value at time T=1: {fv:.4f}')
@@ -196,14 +131,14 @@ if __name__ == '__main__':
         # computing the upper fair value bound at the uncertainty level h via nn optimization
         print("starting neural network optimization for the upper bound...")
         #initializing the neural network
-        i_theta_mart = IThetaMart(func=log_loss, penalty=penalty, p=p, mu=mu,
+        i_theta_mart = nnutils.IThetaMart(func=log_loss, penalty=penalty, p=p, mu=mu,
                          h=h, width=net_width, depth=net_depth,
                          nr_sample=mc_samples)
 
         optm = torch.optim.Adam(i_theta_mart.parameters(), lr=learning_rate)
         out_vector = []
         for i in range(epochs):
-            out = gauss.train(i_theta_mart, optm)
+            out = nnutils.train(i_theta_mart, optm)
             out_vector.append(-float(out))
         out_vector = pd.Series(out_vector).rolling(rolling_window).mean()
         upper_vector.append(out_vector[out_vector.shape[0]-1])
@@ -225,14 +160,14 @@ if __name__ == '__main__':
         # computing the lower fair value bound at the uncertainty level h via nn optimization
         print("starting neural network optimization for the lower bound...")
         # initializing the neural network
-        i_theta_mart = IThetaMart(func=log_loss, penalty=penalty, p=p, mu=mu,
+        i_theta_mart = nnutils.IThetaMart(func=log_loss, penalty=penalty, p=p, mu=mu,
                                   h=h, width=net_width, depth=net_depth,
                                   nr_sample=mc_samples, sup=False)
 
         optm = torch.optim.Adam(i_theta_mart.parameters(), lr=learning_rate)
         out_vector = []
         for i in range(epochs):
-            out = gauss.train(i_theta_mart, optm)
+            out = nnutils.train(i_theta_mart, optm)
             out_vector.append(float(out))
         out_vector = pd.Series(out_vector).rolling(rolling_window).mean()
         lower_vector.append(out_vector[out_vector.shape[0] - 1])
@@ -259,6 +194,10 @@ if __name__ == '__main__':
     plt.plot(maturities, expected_vector, label='B&S fair value')
     plt.xlabel('Maturity')
     plt.ylabel('Fair value')
+    # --------------- reset if input parameters are changed ------------------
+    plt.xlim([maturities[0] - 1. / 365.2425, maturities[-1] + 1. / 365.2425])
+    plt.ylim([0.048, 0.0670])
+    # ------------------------------------------------------------------------
     plt.legend()
     plt.savefig(os.path.join(plot_fold,'option_levels.png'), bbox_inches='tight')
     plt.clf()
