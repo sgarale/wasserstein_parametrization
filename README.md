@@ -22,7 +22,7 @@ Here, a list of the scripts used to produce the plots of the paper:
 Execution time may vary depending on the machine. We recommend to reduce the number of samples when first running the code.
 In some cases, in order to reproduce the plots of the paper, particular settings for the limits of the plots are given. If the input parameters are changed, these settings should be reset (it is enough to comment out the corresponding lines).
 
-####Version 0.9
+#### Version 0.9
 
 ### License
 

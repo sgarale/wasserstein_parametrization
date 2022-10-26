@@ -19,16 +19,16 @@ if __name__ == '__main__':
     torch.set_default_dtype(torch.float64)
     # ---------------------- INPUTS ----------------------
     plot_fold = 'gaussian_epicenter'
-    eval_type = 'neural_network'  # choose among ['neural_network','one_dimensional','both']
+    eval_type = 'both'  # choose among ['neural_network','one_dimensional','both']
     city_center = [0., 0.]
     cost_level = 1.
     radius = 1.5
     epicenter = torch.tensor([1., 0.])
     variance = 1.
-    uncertainty_level = 0.02
+    uncertainty_level = 0.5
     net_width = 20
     net_depth = 4
-    mc_samples = 2**12 # 2**15
+    mc_samples = 2**15
     mc_samples_1d = 2**16
     learning_rate = 0.001
     learning_rate_1d = 0.001
