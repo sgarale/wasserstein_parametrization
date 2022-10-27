@@ -1,7 +1,7 @@
 ## A parametric approach to the estimation of convex risk functionals based on Wasserstein distance
 ____________________________
 
-This repository contains the implementation of the numerical examples in ["A parametric approach to the estimation of convex risk functionals based on Wasserstein distance"](link ad arxiv)
+This repository contains the implementation of the numerical examples in ["A parametric approach to the estimation of convex risk functionals based on Wasserstein distance"](http://arxiv.org/abs/2210.14340)
 
 ### Requirements
 The file [requirements.txt](requirements.txt) contains minimal requirements for the environment necessary to run the scripts of this repository.
@@ -22,7 +22,7 @@ Here, a list of the scripts used to produce the plots of the paper:
 Execution time may vary depending on the machine. We recommend to reduce the number of samples when first running the code.
 In some cases, in order to reproduce the plots of the paper, particular settings for the limits of the plots are given. If the input parameters are changed, these settings should be reset (it is enough to comment out the corresponding lines).
 
-#### Version 0.9
+#### Version 1.0
 
 ### License
 
