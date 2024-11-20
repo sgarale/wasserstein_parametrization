@@ -79,8 +79,7 @@ if __name__ == '__main__':
     maturities = torch.arange(3, 33, 3) / 365.2425
     net_width = 20
     net_depth = 4
-    mc_samples = 2**16
-    mc_out_of_samples = 2**19
+    mc_samples = 2**15
     learning_rate = 0.001
     epochs = 1100
     rolling_window = 100
@@ -88,11 +87,6 @@ if __name__ == '__main__':
 
     plot_fold = os.path.join('plots', plot_fold)
     ut.check_dir(plot_fold)
-
-    # setting latex style for plots
-    plt.rcParams['text.usetex'] = True
-    plt.rcParams['font.size'] = 13
-    plt.rcParams['legend.fontsize'] = 13
 
     # writing summary
     dump_summary = open(os.path.join(plot_fold, "summary.txt"), 'w')
@@ -115,7 +109,9 @@ if __name__ == '__main__':
 
     # initialization of loss function, baseline model, and penalisation function
     loss = cf.BullSpread(strike_long, strike_short)
-    mu = torch.distributions.log_normal.LogNormal((drift - volatility * volatility / 2) * T0, volatility * math.sqrt(T0))
+    def log_loss(x):
+        return loss.cost(torch.exp(x))
+    mu = torch.distributions.normal.Normal((drift - volatility * volatility / 2) * T0, volatility * math.sqrt(T0))
     penalty = pnl.RescaledPolyPenalty(sigma=volatility, n=penalty_power_growth)
 
     # computing the option fair value via Black-Scholes formula
@@ -141,30 +137,23 @@ if __name__ == '__main__':
         # computing the upper fair value bound at the uncertainty level h via nn optimization
         print("starting neural network optimization for the upper bound...")
         #initializing the neural network
-        i_theta_mart = nnutils.IThetaMart(func=loss.cost, penalty=penalty, p=p, mu=mu,
+        i_theta_mart = nnutils.IThetaMart(func=log_loss, penalty=penalty, p=p, mu=mu,
                          h=h, width=net_width, depth=net_depth,
                          nr_sample=mc_samples)
 
         optm = torch.optim.Adam(i_theta_mart.parameters(), lr=learning_rate)
         out_vector = []
         for i in range(epochs):
-            optm.zero_grad()
-            y = mu.sample([i_theta_mart.nr_sample,1])
-            out = i_theta_mart(y)
-            out.backward()
-            optm.step()
+            out = nnutils.train(i_theta_mart, optm)
             out_vector.append(-float(out))
-        train_hist = pd.Series(out_vector).rolling(rolling_window).mean()
-        i_theta_mart.eval()
-        y = mu.sample([mc_out_of_samples,1])
-        upper_bound = -i_theta_mart(y)
-        upper_vector.append(upper_bound.item())
-        print(f"Parametrized upper bound: {upper_bound:.6f}")
-        dump_summary.write(f'\nUpper bound through neural network optimizer: {upper_bound:.8f}')
+        out_vector = pd.Series(out_vector).rolling(rolling_window).mean()
+        upper_vector.append(out_vector[out_vector.shape[0]-1])
+        print(f"Parametrized upper bound: {out_vector[out_vector.shape[0]-1]:.6f}")
+        dump_summary.write(f'\nUpper bound through neural network optimizer: {out_vector[out_vector.shape[0]-1]:.8f}')
 
         # plotting the training phase
-        plt.plot(np.arange(1, train_hist.shape[0] + 1), train_hist, label='neural network upper model')
-        plt.plot(np.arange(1, train_hist.shape[0] + 1), np.repeat(fv, epochs),
+        plt.plot(np.arange(1, out_vector.shape[0] + 1), out_vector, label='neural network upper model')
+        plt.plot(np.arange(1, out_vector.shape[0] + 1), np.repeat(fv, epochs),
                  label='reference model')
         plt.xlabel("Epochs")
         plt.ylabel("Fair value")
@@ -177,31 +166,24 @@ if __name__ == '__main__':
         # computing the lower fair value bound at the uncertainty level h via nn optimization
         print("starting neural network optimization for the lower bound...")
         # initializing the neural network
-        i_theta_mart = nnutils.IThetaMart(func=loss.cost, penalty=penalty, p=p, mu=mu,
+        i_theta_mart = nnutils.IThetaMart(func=log_loss, penalty=penalty, p=p, mu=mu,
                                   h=h, width=net_width, depth=net_depth,
                                   nr_sample=mc_samples, sup=False)
 
         optm = torch.optim.Adam(i_theta_mart.parameters(), lr=learning_rate)
         out_vector = []
         for i in range(epochs):
-            optm.zero_grad()
-            y = mu.sample([i_theta_mart.nr_sample,1])
-            out = i_theta_mart(y)
-            out.backward()
-            optm.step()
+            out = nnutils.train(i_theta_mart, optm)
             out_vector.append(float(out))
-        train_hist = pd.Series(out_vector).rolling(rolling_window).mean()
-        i_theta_mart.eval()
-        y = mu.sample([mc_out_of_samples,1])
-        lower_bound = i_theta_mart(y)
-        lower_vector.append(lower_bound.item())
-        print(f"Parametrized lower bound: {lower_bound:.6f}")
+        out_vector = pd.Series(out_vector).rolling(rolling_window).mean()
+        lower_vector.append(out_vector[out_vector.shape[0] - 1])
+        print(f"Parametrized lower bound: {out_vector[out_vector.shape[0] - 1]:.6f}")
         dump_summary.write(
-            f'\nLower bound through neural network optimizer: {lower_bound:.8f}')
+            f'\nLower bound through neural network optimizer: {out_vector[out_vector.shape[0] - 1]:.8f}')
 
         # plotting the training phase
-        plt.plot(np.arange(1, train_hist.shape[0] + 1), train_hist, label='neural network lower model')
-        plt.plot(np.arange(1, train_hist.shape[0] + 1), np.repeat(fv, epochs),
+        plt.plot(np.arange(1, out_vector.shape[0] + 1), out_vector, label='neural network lower model')
+        plt.plot(np.arange(1, out_vector.shape[0] + 1), np.repeat(fv, epochs),
                  label='reference model')
         plt.xlabel("Epochs")
         plt.ylabel("Fair value")
@@ -215,7 +197,7 @@ if __name__ == '__main__':
     maturities = torch.concat([torch.tensor([T0]), maturities])
     plt.plot(maturities, upper_vector, label='Upper level')
     plt.plot(maturities, lower_vector, label='Lower level')
-    plt.plot(maturities, expected_vector, label='B\&S fair value')
+    plt.plot(maturities, expected_vector, label='B&S fair value')
     plt.xlabel('Maturity')
     plt.ylabel('Fair value')
     # --------------- reset if input parameters are changed ------------------
@@ -224,7 +206,6 @@ if __name__ == '__main__':
     # ------------------------------------------------------------------------
     plt.legend()
     plt.savefig(os.path.join(plot_fold,'option_levels.png'), bbox_inches='tight')
-    plt.savefig(os.path.join(plot_fold,'option_levels.eps'), format='eps', bbox_inches='tight')
     plt.clf()
 
     dump_summary.write(f'\n\nB&S prices: {expected_vector}')

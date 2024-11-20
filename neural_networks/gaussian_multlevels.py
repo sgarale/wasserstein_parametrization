@@ -1,3 +1,4 @@
+import sys
 import os
 import time
 import copy
@@ -5,6 +6,11 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import torch
+
+# Add the parent folder to sys.path
+parent_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
+sys.path.insert(0, parent_dir)
+
 import cost_functions as cf
 import penalties as pnl
 import utils as ut
@@ -42,6 +48,11 @@ if __name__ == '__main__':
 
     plot_fold = os.path.join("plots", plot_fold)
     ut.check_dir(plot_fold)
+
+    # setting latex style for plots
+    plt.rcParams['text.usetex'] = True
+    plt.rcParams['font.size'] = 13
+    plt.rcParams['legend.fontsize'] = 13
 
     # writing summary
     dump_summary = open(os.path.join(plot_fold, "summary.txt"), 'w')
@@ -181,6 +192,7 @@ if __name__ == '__main__':
             plt.ylabel("Worst case loss")
             plt.legend()
             plt.savefig(os.path.join(plot_fold, f"training_nn_level_{h_levels[j]:.5f}.png"), bbox_inches='tight')
+            plt.savefig(os.path.join(plot_fold, f"training_nn_level_{h_levels[j]:.5f}.eps"), format='eps', bbox_inches='tight')
             plt.clf()
 
             # Drawing the vector field theta
@@ -203,6 +215,7 @@ if __name__ == '__main__':
             ax.quiver(xv, yv, theta[:, :, 0], theta[:, :, 1], color='g')
             ax.plot(epicenter[0], epicenter[1], 'rh')
             plt.savefig(os.path.join(plot_fold, f"nn_optimizer_level_{h_levels[j]:.5f}.png"), bbox_inches='tight')
+            plt.savefig(os.path.join(plot_fold, f"nn_optimizer_level_{h_levels[j]:.5f}.eps"), format='eps', bbox_inches='tight')
             plt.clf()
 
         dump_file_nn.write("\nWorst case losses: ")

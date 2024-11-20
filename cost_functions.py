@@ -1,6 +1,8 @@
+import os
 import numpy as np
 import matplotlib.pyplot as plt
 import torch
+import utils as ut
 
 class GaussianKernelCost2D:
     """
@@ -179,6 +181,14 @@ if __name__=='__main__':
 
     # This main plots the cost function for the earthquake model of Section 4.
 
+    # setting latex style for plots
+    plt.rcParams['text.usetex'] = True
+    plt.rcParams['font.size'] = 13
+    plt.rcParams['legend.fontsize'] = 13
+
+    # setting the output folder
+    ut.check_dir("plots")
+
     # -------- insert center points, level, and radius -----------
     x_0 = 0.
     y_0 = 0.
@@ -194,6 +204,8 @@ if __name__=='__main__':
     ax = fig.add_subplot(111, projection='3d')
     ax.set_box_aspect((1, 1, 0.4))
     ax.plot_surface(xv, yv, zg, rstride=1, cstride=1, cmap='coolwarm', edgecolor='none')
+    plt.tight_layout()
+    plt.savefig(os.path.join('plots', "loss_plot.eps"), format='eps')
     plt.show()
 
     # Depict the gradient of the gaussian kernel loss

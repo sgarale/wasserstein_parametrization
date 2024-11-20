@@ -168,6 +168,40 @@ class PenalisedLossMart(nn.Module):
         return self.sign * (integral + self.sign * penal_term)
 
 
+class IThetaMart_old(nn.Module):
+    """
+    Parametric functional I_Theta for the martingale constraint case in R
+    """
+
+    def __init__(self, func, penalty, p, mu, h, width, depth, nr_sample, sup=True):
+        super(IThetaMart_old, self).__init__()
+        self.theta = MartReLUNetwork(width, depth)
+        self.mult_coeff = None
+        self.penalised_loss = PenalisedLossMart(func=func, penalty=penalty, p=p, h=h, sup=sup)
+        self.mu = mu
+        self.nr_sample = nr_sample
+        self.scale_norm()
+
+    def forward(self):
+        y = self.mu.sample([self.nr_sample, 1])
+        theta_y = self.mult_coeff * self.theta(y)
+        i_theta = self.penalised_loss(y, theta_y)
+        return i_theta
+
+    def scale_norm(self):
+        """
+        Rescales the norm of the function after the random initialization in order to force it
+        inside the interval (0, sigma). This avoids numerical problems in case the starting distribution
+        is in a region where the penalization is too large.
+        """
+        y = self.mu.sample([self.nr_sample, 1])
+        theta_y = self.theta(y)
+        Lp_norm_theta = torch.pow(torch.mean(torch.pow(torch.abs(theta_y), self.penalised_loss.p)), 1. / self.penalised_loss.p)
+        m = torch.distributions.uniform.Uniform(torch.sqrt(self.penalised_loss.h) * self.penalised_loss.penalty.sigma / (5 * Lp_norm_theta),
+                        torch.sqrt(self.penalised_loss.h) * self.penalised_loss.penalty.sigma / Lp_norm_theta)
+        self.mult_coeff = nn.Parameter(m.sample())
+
+
 class IThetaMart(nn.Module):
     """
     Parametric functional I_Theta for the martingale constraint case in R
@@ -182,8 +216,7 @@ class IThetaMart(nn.Module):
         self.nr_sample = nr_sample
         self.scale_norm()
 
-    def forward(self):
-        y = self.mu.sample([self.nr_sample, 1])
+    def forward(self, y):
         theta_y = self.mult_coeff * self.theta(y)
         i_theta = self.penalised_loss(y, theta_y)
         return i_theta

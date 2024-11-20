@@ -1,3 +1,4 @@
+import sys
 import copy
 import os
 import time
@@ -5,6 +6,11 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import torch
+
+# Add the parent folder to sys.path
+parent_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
+sys.path.insert(0, parent_dir)
+
 import cost_functions as cf
 import penalties as pnl
 import utils as ut
@@ -41,6 +47,11 @@ if __name__ == '__main__':
 
     plot_fold = os.path.join("plots", plot_fold)
     ut.check_dir(plot_fold)
+
+    # setting latex style for plots
+    plt.rcParams['text.usetex'] = True
+    plt.rcParams['font.size'] = 13
+    plt.rcParams['legend.fontsize'] = 13
 
     # writing summary
     dump_summary = open(os.path.join(plot_fold, "summary.txt"), 'w')
@@ -138,6 +149,7 @@ if __name__ == '__main__':
         plt.ylabel("Worst case loss")
         plt.legend()
         plt.savefig(os.path.join(plot_fold, f"transfer_exercise_{j + 1}.png"), bbox_inches='tight')
+        plt.savefig(os.path.join(plot_fold, f"transfer_exercise_{j + 1}.eps"), format='eps', bbox_inches='tight')
         plt.clf()
 
     print(f"elaboration time: {(time.time() - start)/60.:.2f} minutes")

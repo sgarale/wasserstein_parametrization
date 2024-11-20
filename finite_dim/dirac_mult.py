@@ -1,11 +1,16 @@
+import sys
 import os
 import numpy as np
 from matplotlib import pyplot as plt
 from scipy.optimize import minimize
+
+# Add the parent folder to sys.path
+parent_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
+sys.path.insert(0, parent_dir)
+
 import cost_functions as cf
 import penalties
 import utils as ut
-
 
 class Dirac2dMult:
     """
@@ -76,6 +81,12 @@ if __name__=='__main__':
     h_levels = np.arange(0.015, 0.315, 0.015)
     # -----------------------------------
 
+    # setting latex style for plots
+    plt.rcParams['text.usetex'] = True
+    plt.rcParams['font.size'] = 13
+    plt.rcParams['legend.fontsize'] = 13
+
+    # checking the existence of the plot folder
     plot_fold = os.path.join('plots', plot_fold)
     ut.check_dir(plot_fold)
 
@@ -98,6 +109,7 @@ if __name__=='__main__':
     ax.plot(epicenter_2[0], epicenter_2[1], 'g.')
     ax.plot(epicenter_3[0], epicenter_3[1], 'b.')
     plt.savefig(os.path.join(plot_fold, 'loss_and_apriori.png'), bbox_inches='tight')
+    plt.savefig(os.path.join(plot_fold, 'loss_and_apriori.eps'), format='eps', bbox_inches='tight')
 
     print(f"Expected loss: {mu.integrate(gaussian_cost.cost) :.4f}")
 
@@ -113,6 +125,7 @@ if __name__=='__main__':
         ax.plot(epicenter_2[0] + res.x[2], epicenter_2[1] + res.x[3], 'g.')
         ax.plot(epicenter_3[0] + res.x[4], epicenter_3[1] + res.x[5], 'b.')
         plt.savefig(os.path.join(plot_fold, f'optimizers_unc_{h:0.2f}.png'), bbox_inches='tight')
+        plt.savefig(os.path.join(plot_fold, f'optimizers_unc_{h:0.2f}.eps'), format='eps', box_inches='tight')
         loss_tmp = - loss_mult(res.x, h, mu, gaussian_cost.cost, penalty)
         I_theta.append(loss_tmp)
         print(f"uncertainty level: {h : .2f}, directions of optimization: {res.x[0] : .4f}, {res.x[1] : .4f}, "
@@ -123,5 +136,6 @@ if __name__=='__main__':
     plt.plot(np.concatenate([[0],h_levels]), I_theta)
     plt.xlabel("Uncertainty level")
     plt.ylabel("Worst case loss")
-    plt.savefig(os.path.join(plot_fold, f'worst_case_loss.png'), bbox_inches='tight')
+    # plt.savefig(os.path.join(plot_fold, f'worst_case_loss.png'), bbox_inches='tight')
+    plt.savefig(os.path.join(plot_fold, f'worst_case_loss.eps'), format='eps', bbox_inches='tight')
     plt.show()
